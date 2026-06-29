@@ -150,7 +150,23 @@ export class Room {
 
       if (hitEntry) {
         const target = hitEntry.player;
-        target.health -= weap.damage;
+
+        // Distance-based damage falloff (shotgun hits hard up close, weak far)
+        let dmg = weap.damage;
+        if (weap.falloff) {
+          const f = weap.falloff;
+          let mult;
+          if (hitDist <= f.near)      mult = f.nearMult;
+          else if (hitDist >= f.far)  mult = f.farMult;
+          else {
+            const tt = (hitDist - f.near) / (f.far - f.near);
+            mult = f.nearMult + (f.farMult - f.nearMult) * tt;
+          }
+          dmg = weap.damage * mult;
+        }
+        dmg = Math.round(dmg);
+
+        target.health -= dmg;
         const kill = target.health <= 0;
         if (kill) {
           target.dead         = true;
@@ -164,7 +180,7 @@ export class Room {
           shooterName: player.name,
           targetId:    target.id,
           targetName:  target.name,
-          damage:      weap.damage,
+          damage:      dmg,
           kill,
           targetHealth: Math.max(0, target.health),
         });

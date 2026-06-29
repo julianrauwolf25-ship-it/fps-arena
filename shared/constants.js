@@ -45,6 +45,7 @@ export const WEAPONS = {
     reloadTime: 1200,
     spread:     0.025,
     pellets:    1,
+    auto:       false,  // semi-auto: one shot per click
     bodyColor:  0x888899,
     barrelLen:  0.25,
     adsFov:     70,
@@ -57,18 +58,22 @@ export const WEAPONS = {
     reloadTime: 1800,
     spread:     0.008,
     pellets:    1,
+    auto:       true,   // full-auto: hold to keep firing
     bodyColor:  0x4a7c3f,
     barrelLen:  0.45,
     adsFov:     65,
   },
   shotgun: {
     name:       'Shotgun',
-    damage:     18,     // per pellet
+    damage:     12,     // per pellet (before distance falloff)
     ammo:       8,
-    fireRate:   900,
+    fireRate:   800,
     reloadTime: 2500,
-    spread:     0.12,
-    pellets:    7,
+    spread:     0.11,
+    pellets:    10,     // many pellets per shot
+    auto:       false,
+    // Distance damage falloff: brutal up close, weak far away
+    falloff:    { near: 6, far: 24, nearMult: 1.7, farMult: 0.3 },
     bodyColor:  0x8b5e3c,
     barrelLen:  0.35,
     adsFov:     75,
@@ -81,6 +86,7 @@ export const WEAPONS = {
     reloadTime: 3000,
     spread:     0.001,
     pellets:    1,
+    auto:       false,
     bodyColor:  0x2d4a6b,
     barrelLen:  0.7,
     adsFov:     30,

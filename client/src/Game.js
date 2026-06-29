@@ -316,24 +316,42 @@ export class Game {
     this._worldMuzzleLight = new THREE.PointLight(0xff8833, 0, 8, 2);
     this.scene.add(this._worldMuzzleLight);
 
-    // Cross flash sprite in VM scene
-    const flashGeo = new THREE.PlaneGeometry(0.12, 0.12);
+    // Soft radial muzzle flash — a glow texture with additive blending so it
+    // reads as light, not a hard white rectangle.
+    const flashTex = canvasTex((ctx, s) => {
+      ctx.clearRect(0, 0, s, s);
+      const g = ctx.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+      g.addColorStop(0.0, 'rgba(255,255,240,1)');
+      g.addColorStop(0.25, 'rgba(255,220,130,0.9)');
+      g.addColorStop(0.55, 'rgba(255,150,40,0.35)');
+      g.addColorStop(1.0, 'rgba(255,120,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, s, s);
+    }, 128);
+
     const flashMat = new THREE.MeshBasicMaterial({
-      color: 0xffee88, transparent: true, opacity: 0, depthTest: false, side: THREE.DoubleSide,
+      map: flashTex, transparent: true, opacity: 0, depthTest: false,
+      depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     });
-    this._muzzleSprite = new THREE.Mesh(flashGeo, flashMat);
+    this._muzzleSprite = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), flashMat);
     this._muzzleSprite.position.set(0, 0.028, -0.72);
+    this._muzzleSprite.renderOrder = 999;
     this.vmScene.add(this._muzzleSprite);
   }
 
   triggerKick(weaponId) {
-    const w       = WEAPONS[weaponId] ?? WEAPONS.pistol;
-    this._kickZ   = 0.07;
-    this._muzzleTimer = 80; // ms to show flash
+    const w     = WEAPONS[weaponId] ?? WEAPONS.pistol;
+    this._kickZ = 0.07;
+    this._muzzleTimer = 60; // ms to show flash (short & snappy)
 
-    this._muzzleLight.intensity        = 18;
-    this._worldMuzzleLight.intensity   = 12;
-    this._muzzleSprite.material.opacity = 0.85;
+    this._muzzleLight.intensity       = 16;
+    this._worldMuzzleLight.intensity  = 10;
+
+    // Randomise the flash so repeated shots don't look mechanical
+    const scale = 0.7 + Math.random() * 0.6;
+    this._muzzleSprite.scale.set(scale, scale, scale);
+    this._muzzleSprite.rotation.z      = Math.random() * Math.PI * 2;
+    this._muzzleSprite.material.opacity = 1;
 
     // Recoil bump on pitch/yaw is handled by main.js via localPlayer
   }
@@ -391,13 +409,13 @@ export class Game {
     // ── Muzzle flash decay ────────────────────────────────────────────────
     if (this._muzzleTimer > 0) {
       this._muzzleTimer -= dt * 1000;
-      const t = Math.max(0, this._muzzleTimer / 80);
-      this._muzzleLight.intensity       = 18 * t;
-      this._worldMuzzleLight.intensity  = 12 * t;
-      this._muzzleSprite.material.opacity = 0.85 * t;
+      const t = Math.max(0, this._muzzleTimer / 60);
+      this._muzzleLight.intensity        = 16 * t;
+      this._worldMuzzleLight.intensity   = 10 * t;
+      this._muzzleSprite.material.opacity = t;
     } else {
-      this._muzzleLight.intensity       = 0;
-      this._worldMuzzleLight.intensity  = 0;
+      this._muzzleLight.intensity        = 0;
+      this._worldMuzzleLight.intensity   = 0;
       this._muzzleSprite.material.opacity = 0;
     }
 

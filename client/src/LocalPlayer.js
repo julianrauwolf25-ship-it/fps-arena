@@ -5,7 +5,7 @@ import {
 import { moveAndCollide } from '../../shared/collision.js';
 
 const MOUSE_SENS    = 0.0018;
-const RECONCILE_DST = 2.5;
+const RECONCILE_DST = 5.0;  // beyond this, snap instantly (respawn/teleport)
 
 export class LocalPlayer {
   constructor() {
@@ -159,8 +159,21 @@ export class LocalPlayer {
     this.kills     = s.kills;
     this.deaths    = s.deaths;
 
-    const d2 = (s.x-this.x)**2 + (s.y-this.y)**2 + (s.z-this.z)**2;
-    if (d2 > RECONCILE_DST ** 2) { this.x = s.x; this.y = s.y; this.z = s.z; }
+    // Smooth reconciliation: instead of a hard snap (which causes visible
+    // stutter/rubber-banding), gently converge toward the authoritative
+    // position. Small client/server drift is corrected over a few snapshots;
+    // only a large divergence (respawn / teleport) snaps instantly.
+    const dx = s.x - this.x, dy = s.y - this.y, dz = s.z - this.z;
+    const d2 = dx*dx + dy*dy + dz*dz;
+    if (d2 > RECONCILE_DST ** 2) {
+      // Big jump → snap (e.g. respawn)
+      this.x = s.x; this.y = s.y; this.z = s.z;
+    } else {
+      // Correct ~25% of the error per snapshot (20 Hz) → invisible to the eye
+      this.x += dx * 0.25;
+      this.y += dy * 0.25;
+      this.z += dz * 0.25;
+    }
   }
 
   currentInput() {
