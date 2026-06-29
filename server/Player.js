@@ -1,10 +1,11 @@
 import {
   PLAYER_SPEED, PLAYER_SPRINT, PLAYER_ADS_MULT, PLAYER_JUMP, GRAVITY,
   PLAYER_HEIGHT, PLAYER_RADIUS, PLAYER_EYE_OFFSET,
-  MAX_HEALTH, RESPAWN_TIME, SPAWN_POINTS, ARENA_HALF,
+  MAX_HEALTH, RESPAWN_TIME, SPAWN_POINTS, WORLD_BOUNDS,
   WEAPONS, WEAPON_KEYS,
 } from '../shared/constants.js';
 import { moveAndCollide } from '../shared/collision.js';
+import { applyParkour }   from '../shared/parkour.js';
 
 export class ServerPlayer {
   constructor(id, name) {
@@ -29,6 +30,7 @@ export class ServerPlayer {
     this.pitch    = 0;
     this.ads      = false;
     this.onGround = false;
+    this.parkourCP = null;  // last parkour checkpoint reached
 
     this.spawn();
   }
@@ -42,6 +44,7 @@ export class ServerPlayer {
     this.health    = MAX_HEALTH;
     this.dead      = false;
     this.reloading = false;
+    this.parkourCP = null;  // back in the arena after a combat death
     for (const k of WEAPON_KEYS) this.ammo[k] = WEAPONS[k].ammo;
   }
 
@@ -88,9 +91,15 @@ export class ServerPlayer {
     this.vx = c.vx; this.vy = c.vy; this.vz = c.vz;
     this.onGround = c.onGround;
 
-    // Arena bounds (walls catch most, this is a safety net)
-    this.x = Math.max(-ARENA_HALF, Math.min(ARENA_HALF, this.x));
-    this.z = Math.max(-ARENA_HALF, Math.min(ARENA_HALF, this.z));
+    // World bounds (walls catch most; this is a loose safety net)
+    this.x = Math.max(WORLD_BOUNDS.minX, Math.min(WORLD_BOUNDS.maxX, this.x));
+    this.z = Math.max(WORLD_BOUNDS.minZ, Math.min(WORLD_BOUNDS.maxZ, this.z));
+
+    // Parkour: checkpoint capture + void respawn
+    const pk = applyParkour(this, this.parkourCP);
+    this.x = pk.x; this.y = pk.y; this.z = pk.z;
+    this.vx = pk.vx; this.vy = pk.vy; this.vz = pk.vz;
+    this.parkourCP = pk.cp;
 
     this.yaw   = yaw;
     this.pitch = typeof input.pitch === 'number' ? input.pitch : 0;

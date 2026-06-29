@@ -1,10 +1,18 @@
 // Shared AABB collision — imported by both server (Node) and client (Vite).
 // Resolves player cylinder (approximated as AABB) against static MAP_BOXES.
 
-import { MAP_BOXES, PLAYER_RADIUS, PLAYER_HEIGHT } from './constants.js';
+import { MAP_BOXES, PLAYER_RADIUS, PLAYER_HEIGHT, ARENA_HALF } from './constants.js';
 
 const PR = PLAYER_RADIUS;
 const PH = PLAYER_HEIGHT;
+
+// The solid ground plane (y=0) only exists inside the arena footprint. Outside
+// it (the parkour zone east of the arena) there is no floor — you fall into the
+// void and respawn at a checkpoint. Players stand on parkour blocks via box
+// collision, not this plane.
+function onArenaFloor(px, pz) {
+  return px <= ARENA_HALF && px >= -ARENA_HALF && pz <= ARENA_HALF && pz >= -ARENA_HALF;
+}
 
 /**
  * Move player by (dx, dy, dz), then resolve penetration with every map box.
@@ -25,8 +33,8 @@ export function moveAndCollide(px, py, pz, vx, vy, vz, dt, onGround) {
   py += vy * dt;
   pz += vz * dt;
 
-  // Floor
-  if (py <= 0) { py = 0; if (vy < 0) vy = 0; onGround = true; }
+  // Floor (arena only)
+  if (py <= 0 && onArenaFloor(px, pz)) { py = 0; if (vy < 0) vy = 0; onGround = true; }
 
   // Run 3 resolution passes for stability with multi-box corners
   for (let pass = 0; pass < 3; pass++) {
@@ -67,8 +75,8 @@ export function moveAndCollide(px, py, pz, vx, vy, vz, dt, onGround) {
     }
   }
 
-  // Re-check floor after box resolution
-  if (py <= 0) { py = 0; if (vy < 0) vy = 0; onGround = true; }
+  // Re-check floor after box resolution (arena only)
+  if (py <= 0 && onArenaFloor(px, pz)) { py = 0; if (vy < 0) vy = 0; onGround = true; }
 
   return { px, py, pz, vx, vy, vz, onGround };
 }

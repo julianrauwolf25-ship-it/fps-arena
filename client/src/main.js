@@ -2,7 +2,7 @@ import { Network }     from './Network.js';
 import { LocalPlayer } from './LocalPlayer.js';
 import { Game }        from './Game.js';
 import { HUD }         from './HUD.js';
-import { WEAPONS }     from '../../shared/constants.js';
+import { WEAPONS, ARENA_HALF } from '../../shared/constants.js';
 
 // ── Lobby ─────────────────────────────────────────────────────────────────────
 const lobbyEl    = document.getElementById('lobby');
@@ -20,6 +20,7 @@ let game = null, localPlayer = null, hud = null, net = null;
 let inGame = false, lastInputStr = null;
 let mouseLeftDown = false;   // tracked for full-auto weapons
 let lastShotMs    = 0;       // client-side fire-rate gate
+let wasInParkour  = false;   // tracks arena↔parkour transitions
 
 // ── Connect ───────────────────────────────────────────────────────────────────
 function attemptJoin() {
@@ -88,6 +89,9 @@ function startGame(myId, initialSnapshot) {
   // Reload callback
   localPlayer.onReload = () => { net.sendReload(); };
 
+  // Parkour: checkpoint reached
+  localPlayer.onCheckpoint = () => { hud.flashMessage('✔ Checkpoint', 'Gespeichert'); };
+
   // Pointer lock on click
   canvas.addEventListener('click', () => {
     if (inGame && !localPlayer.dead) canvas.requestPointerLock();
@@ -148,5 +152,13 @@ function loop(ts) {
   if (mouseLeftDown && WEAPONS[localPlayer.currentWeapon].auto) tryShoot();
 
   if (!localPlayer.dead) localPlayer.update(dt);
+
+  // Show a one-time hint when crossing from the arena into the parkour zone
+  const inParkour = localPlayer.x > ARENA_HALF;
+  if (inParkour && !wasInParkour) {
+    hud.flashMessage('Parkour', 'Links = schwer  ·  Rechts = leicht  ·  Runterfallen = zurück zum Checkpoint', 3500);
+  }
+  wasInParkour = inParkour;
+
   game.render(localPlayer, dt);
 }

@@ -23,6 +23,10 @@ export class HUD {
     this._crosshair  = document.getElementById('crosshair');
     this._vignette   = document.getElementById('hit-vignette');
     this._scope      = document.getElementById('scope');
+    this._toast      = document.getElementById('toast');
+    this._toastMain  = this._toast.querySelector('.toast-main');
+    this._toastSub   = this._toast.querySelector('.toast-sub');
+    this._toastTimer = null;
 
     this._hmTimer       = null;
     this._vignetteTimer = null;
@@ -71,6 +75,14 @@ export class HUD {
   }
 
   showRespawn(show) { this._respawn.classList.toggle('visible', show); }
+
+  flashMessage(main, sub = '', ms = 2200) {
+    this._toastMain.textContent = main;
+    this._toastSub.textContent  = sub;
+    this._toast.classList.add('show');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => this._toast.classList.remove('show'), ms);
+  }
 
   flashHitmarker(kill) {
     this._hitmarker.style.borderColor = kill ? '#ffe000' : '#ff4040';

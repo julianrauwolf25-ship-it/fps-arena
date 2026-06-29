@@ -1,8 +1,9 @@
 import {
   PLAYER_SPEED, PLAYER_SPRINT, PLAYER_ADS_MULT, PLAYER_JUMP, GRAVITY,
-  PLAYER_EYE_OFFSET, ARENA_HALF, WEAPONS, WEAPON_KEYS,
+  PLAYER_EYE_OFFSET, WORLD_BOUNDS, WEAPONS, WEAPON_KEYS,
 } from '../../shared/constants.js';
 import { moveAndCollide } from '../../shared/collision.js';
+import { applyParkour }   from '../../shared/parkour.js';
 
 const MOUSE_SENS    = 0.0018;
 const RECONCILE_DST = 5.0;  // beyond this, snap instantly (respawn/teleport)
@@ -34,9 +35,13 @@ export class LocalPlayer {
     this.kills  = 0;
     this.deaths = 0;
 
+    // Parkour
+    this.parkourCP = null;
+
     // Callbacks wired by main.js
     this.onWeaponSwitch = null;
     this.onReload       = null;
+    this.onCheckpoint   = null;
 
     this.keys = { forward: false, back: false, left: false, right: false, jump: false, sprint: false };
     this._inputSeq = 0;
@@ -124,8 +129,15 @@ export class LocalPlayer {
     this.vx = c.vx; this.vy = c.vy; this.vz = c.vz;
     this.onGround = c.onGround;
 
-    this.x = Math.max(-ARENA_HALF, Math.min(ARENA_HALF, this.x));
-    this.z = Math.max(-ARENA_HALF, Math.min(ARENA_HALF, this.z));
+    this.x = Math.max(WORLD_BOUNDS.minX, Math.min(WORLD_BOUNDS.maxX, this.x));
+    this.z = Math.max(WORLD_BOUNDS.minZ, Math.min(WORLD_BOUNDS.maxZ, this.z));
+
+    // ── Parkour: checkpoint capture + void respawn (predicted locally) ──────
+    const pk = applyParkour(this, this.parkourCP);
+    this.x = pk.x; this.y = pk.y; this.z = pk.z;
+    this.vx = pk.vx; this.vy = pk.vy; this.vz = pk.vz;
+    this.parkourCP = pk.cp;
+    if (pk.newCheckpoint) this.onCheckpoint?.();
 
     // ── Head bob ──────────────────────────────────────────────────────────
     const moving = this.onGround && (mx !== 0 || mz !== 0);

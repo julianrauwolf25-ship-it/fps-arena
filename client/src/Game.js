@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MAP_BOXES, ARENA_HALF, WEAPONS, WEAPON_KEYS } from '../../shared/constants.js';
+import { MAP_BOXES, ARENA_HALF, VOID_Y, WEAPONS, WEAPON_KEYS } from '../../shared/constants.js';
 import { RemotePlayer } from './RemotePlayer.js';
 
 const FOV_HIP = 90;
@@ -164,43 +164,64 @@ export class Game {
     // Meshes that bullets can hit (used for impact-decal raycasting)
     this._collidables = [floor];
 
-    // Arena walls — tall concrete
-    const wallH  = 8;
-    const half   = ARENA_HALF;
-    const wallMat = stdMat(wt, 0.88);
-    for (const d of [
-      { w: half*2+0.5, h: wallH, d: 0.5,  x: 0,    y: wallH/2, z:  half },
-      { w: half*2+0.5, h: wallH, d: 0.5,  x: 0,    y: wallH/2, z: -half },
-      { w: 0.5, h: wallH, d: half*2,       x:  half, y: wallH/2, z: 0    },
-      { w: 0.5, h: wallH, d: half*2,       x: -half, y: wallH/2, z: 0    },
-    ]) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(d.w, d.h, d.d), wallMat);
-      m.position.set(d.x, d.y, d.z);
-      m.castShadow = m.receiveShadow = true;
-      this.scene.add(m);
-      this._collidables.push(m);
-    }
+    // Dark "abyss" plane far below the parkour zone (purely visual depth cue)
+    const voidPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(140, 90),
+      new THREE.MeshStandardMaterial({ color: 0x1a1f2a, roughness: 1 }),
+    );
+    voidPlane.rotation.x = -Math.PI / 2;
+    voidPlane.position.set(45, VOID_Y - 2, 0);
+    this.scene.add(voidPlane);
 
-    // Cover boxes — alternate concrete / metal based on size
+    // Materials reused for parkour platforms (cached so we don't rebuild per box)
+    const easyMat = new THREE.MeshStandardMaterial({ color: 0x33aa66, emissive: 0x0e3320, emissiveIntensity: 0.4, roughness: 0.6 });
+    const hardMat = new THREE.MeshStandardMaterial({ color: 0xcc4a2a, emissive: 0x331005, emissiveIntensity: 0.4, roughness: 0.6 });
+    const cpMat   = new THREE.MeshStandardMaterial({ color: 0xffcc33, emissive: 0x664400, emissiveIntensity: 0.9, roughness: 0.4 });
+    const wallMat = stdMat(wt, 0.88);
+
+    // Build every collidable box, choosing a look from its `kind`
     for (const b of MAP_BOXES) {
-      const isLarge = b.w > 4 || b.d > 4;
-      const mat     = isLarge ? stdMat(ct, 0.85) : stdMat(mt, 0.55, 0.35);
-      const mesh    = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), mat);
+      let mat;
+      switch (b.kind) {
+        case 'wall':         mat = wallMat; break;
+        case 'checkpoint':   mat = cpMat;   break;
+        case 'parkour':      mat = b.z < 0 ? hardMat : easyMat; break;
+        case 'parkourStart': mat = stdMat(ct, 0.85); break;
+        default: {           // cover
+          const isLarge = b.w > 4 || b.d > 4;
+          mat = isLarge ? stdMat(ct, 0.85) : stdMat(mt, 0.55, 0.35);
+        }
+      }
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), mat);
       mesh.position.set(b.x, b.y, b.z);
       mesh.castShadow = mesh.receiveShadow = true;
       this.scene.add(mesh);
       this._collidables.push(mesh);
     }
 
-    // Decorative pillars at map centre for visual interest
+    // Decorative pillar at arena centre
     const pillarMat = stdMat(concreteTex([90, 82, 74]), 0.8);
-    for (const [x, z] of [[0, 0]]) {
-      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 4, 8), pillarMat);
-      pillar.position.set(x, 2, z);
-      pillar.castShadow = pillar.receiveShadow = true;
-      this.scene.add(pillar);
-      this._collidables.push(pillar);
-    }
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 4, 8), pillarMat);
+    pillar.position.set(0, 2, 0);
+    pillar.castShadow = pillar.receiveShadow = true;
+    this.scene.add(pillar);
+    this._collidables.push(pillar);
+
+    // Course beacons just outside the portal: red glow = hard (left/−z),
+    // green glow = easy (right/+z). Tall thin emissive markers + a light.
+    const beacon = (z, color) => {
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 7, 0.4),
+        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.9, roughness: 0.5 }),
+      );
+      m.position.set(29.5, 3.5, z);
+      this.scene.add(m);
+      const pl = new THREE.PointLight(color, 8, 16, 2);
+      pl.position.set(29.5, 4, z);
+      this.scene.add(pl);
+    };
+    beacon(-4, 0xff4422);  // hard course side
+    beacon( 4, 0x33dd66);  // easy course side
 
     // Ground markings (lines / decals via thin planes)
     const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.18, transparent: true });
