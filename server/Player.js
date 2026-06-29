@@ -1,10 +1,10 @@
 import {
   PLAYER_SPEED, PLAYER_SPRINT, PLAYER_ADS_MULT, PLAYER_JUMP, GRAVITY,
   PLAYER_HEIGHT, PLAYER_RADIUS, PLAYER_EYE_OFFSET,
-  MAX_HEALTH, RESPAWN_TIME,
-  SPAWN_POINTS, ARENA_HALF,
+  MAX_HEALTH, RESPAWN_TIME, SPAWN_POINTS, ARENA_HALF,
   WEAPONS, WEAPON_KEYS,
 } from '../shared/constants.js';
+import { moveAndCollide } from '../shared/collision.js';
 
 export class ServerPlayer {
   constructor(id, name) {
@@ -14,7 +14,6 @@ export class ServerPlayer {
     this.kills  = 0;
     this.deaths = 0;
 
-    // Per-weapon ammo
     this.ammo = {};
     for (const k of WEAPON_KEYS) this.ammo[k] = WEAPONS[k].ammo;
 
@@ -24,8 +23,7 @@ export class ServerPlayer {
     this.dead          = false;
     this.respawnTimer  = 0;
 
-    // Physics (y = feet)
-    this.x  = 0; this.y = 1; this.z = 0;
+    this.x  = 0; this.y = 0; this.z = 0;
     this.vx = 0; this.vy = 0; this.vz = 0;
     this.yaw      = 0;
     this.pitch    = 0;
@@ -44,7 +42,6 @@ export class ServerPlayer {
     this.health    = MAX_HEALTH;
     this.dead      = false;
     this.reloading = false;
-    // Refill ammo on respawn
     for (const k of WEAPON_KEYS) this.ammo[k] = WEAPONS[k].ammo;
   }
 
@@ -66,10 +63,9 @@ export class ServerPlayer {
     const ads   = !!input.ads;
     const base  = input.sprint ? PLAYER_SPRINT : PLAYER_SPEED;
     const speed = ads ? base * PLAYER_ADS_MULT : base;
-
-    const yaw = input.yaw ?? 0;
-    const cos = Math.cos(yaw);
-    const sin = Math.sin(yaw);
+    const yaw   = input.yaw ?? 0;
+    const cos   = Math.cos(yaw);
+    const sin   = Math.sin(yaw);
 
     let mx = 0, mz = 0;
     if (input.forward) { mx -= sin; mz -= cos; }
@@ -83,19 +79,16 @@ export class ServerPlayer {
     this.vx = mx;
     this.vz = mz;
 
-    if (input.jump && this.onGround) {
-      this.vy       = PLAYER_JUMP;
-      this.onGround = false;
-    }
-
+    if (input.jump && this.onGround) { this.vy = PLAYER_JUMP; this.onGround = false; }
     this.vy += GRAVITY * dt;
-    this.x  += this.vx * dt;
-    this.y  += this.vy * dt;
-    this.z  += this.vz * dt;
 
-    if (this.y <= 1) { this.y = 1; this.vy = 0; this.onGround = true; }
-    else              { this.onGround = false; }
+    // Collide with map geometry
+    const c = moveAndCollide(this.x, this.y, this.z, this.vx, this.vy, this.vz, dt, this.onGround);
+    this.x = c.px; this.y = c.py; this.z = c.pz;
+    this.vx = c.vx; this.vy = c.vy; this.vz = c.vz;
+    this.onGround = c.onGround;
 
+    // Arena bounds (walls catch most, this is a safety net)
     this.x = Math.max(-ARENA_HALF, Math.min(ARENA_HALF, this.x));
     this.z = Math.max(-ARENA_HALF, Math.min(ARENA_HALF, this.z));
 
@@ -103,7 +96,6 @@ export class ServerPlayer {
     this.pitch = typeof input.pitch === 'number' ? input.pitch : 0;
     this.ads   = ads;
 
-    // Weapon switch
     const wid = input.weapon;
     if (wid && WEAPONS[wid] && !this.reloading) this.currentWeapon = wid;
   }
@@ -112,21 +104,15 @@ export class ServerPlayer {
 
   toSnapshot() {
     return {
-      id:            this.id,
-      name:          this.name,
-      x:             this.x,
-      y:             this.y,
-      z:             this.z,
-      yaw:           this.yaw,
-      pitch:         this.pitch,
-      health:        this.health,
-      dead:          this.dead,
-      kills:         this.kills,
-      deaths:        this.deaths,
-      ammo:          this.ammo[this.currentWeapon],
-      reloading:     this.reloading,
+      id: this.id, name: this.name,
+      x: this.x, y: this.y, z: this.z,
+      yaw: this.yaw, pitch: this.pitch,
+      health: this.health, dead: this.dead,
+      kills: this.kills, deaths: this.deaths,
+      ammo: this.ammo[this.currentWeapon],
+      reloading: this.reloading,
       currentWeapon: this.currentWeapon,
-      ads:           this.ads,
+      ads: this.ads,
     };
   }
 }

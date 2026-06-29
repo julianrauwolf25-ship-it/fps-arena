@@ -9,96 +9,102 @@
     body { background: #111; color: #fff; font-family: 'Segoe UI', system-ui, sans-serif; overflow: hidden; user-select: none; }
     canvas { display: block; width: 100vw; height: 100vh; }
 
-    /* ── Lobby ─────────────────────────────────────────────────────────────── */
-    #lobby { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.85); z-index: 100; }
+    /* ── Lobby ──────────────────────────────────────────────────────────────── */
+    #lobby { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.88); z-index: 100; }
     #lobby.hidden { display: none; }
-    .lobby-card { background: #1a1a2e; border: 1px solid #444; border-radius: 12px; padding: 40px 48px; text-align: center; max-width: 380px; width: 90%; }
-    .lobby-card h1 { font-size: 2rem; margin-bottom: 8px; color: #e0c060; }
-    .lobby-card p  { color: #aaa; margin-bottom: 24px; font-size: .9rem; }
-    .lobby-card input { width: 100%; padding: 10px 14px; border-radius: 6px; border: 1px solid #555; background: #222; color: #fff; font-size: 1rem; margin-bottom: 16px; outline: none; }
-    .lobby-card input:focus { border-color: #e0c060; }
-    .lobby-card button { width: 100%; padding: 12px; background: #e0c060; color: #111; border: none; border-radius: 6px; font-size: 1rem; font-weight: 700; cursor: pointer; }
-    .lobby-card button:hover { opacity: .85; }
-    #conn-status { margin-top: 14px; font-size: .85rem; color: #aaa; min-height: 20px; }
+    .lobby-card { background: #141824; border: 1px solid #333; border-radius: 14px; padding: 44px 52px; text-align: center; max-width: 380px; width: 90%; box-shadow: 0 24px 64px rgba(0,0,0,.6); }
+    .lobby-card h1 { font-size: 2.2rem; margin-bottom: 6px; color: #e8c86a; letter-spacing: .04em; }
+    .lobby-card p  { color: #888; margin-bottom: 28px; font-size: .88rem; line-height: 1.5; }
+    .lobby-card input { width: 100%; padding: 11px 15px; border-radius: 7px; border: 1px solid #444; background: #1e2030; color: #fff; font-size: 1rem; margin-bottom: 14px; outline: none; transition: border-color .15s; }
+    .lobby-card input:focus { border-color: #e8c86a; }
+    .lobby-card button { width: 100%; padding: 13px; background: #e8c86a; color: #111; border: none; border-radius: 7px; font-size: 1rem; font-weight: 700; cursor: pointer; letter-spacing: .05em; transition: opacity .15s; }
+    .lobby-card button:hover { opacity: .87; }
+    #conn-status { margin-top: 14px; font-size: .83rem; color: #777; min-height: 20px; }
 
-    /* ── HUD (hidden until in-game) ──────────────────────────────────────── */
+    /* ── HUD ────────────────────────────────────────────────────────────────── */
     #hud { position: fixed; inset: 0; pointer-events: none; display: none; }
 
     /* Crosshair */
-    #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 20px; height: 20px; transition: width .1s, height .1s; }
-    #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,.9); transition: all .1s; }
+    #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 20px; height: 20px; }
+    #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,.92); transition: all .1s; }
     #crosshair::before { left: 50%; top: 0; width: 1.5px; height: 100%; transform: translateX(-50%); }
     #crosshair::after  { top: 50%; left: 0; height: 1.5px; width: 100%; transform: translateY(-50%); }
-    /* ADS = tiny dot crosshair */
     #crosshair.ads { width: 4px; height: 4px; }
-    #crosshair.ads::before, #crosshair.ads::after { background: rgba(255,220,0,.95); }
+    #crosshair.ads::before, #crosshair.ads::after { background: rgba(255,220,60,.95); }
 
-    /* Health */
-    #health-bar { position: absolute; bottom: 72px; left: 24px; width: 180px; }
-    #health-label { font-size: .65rem; color: #aaa; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 4px; }
-    #health-track { height: 8px; background: #333; border-radius: 4px; overflow: hidden; }
-    #health-fill  { height: 100%; width: 100%; background: #4caf50; transition: width .12s, background .12s; }
-    #health-num   { margin-top: 4px; font-size: .9rem; font-weight: 700; }
+    /* Health bar */
+    #health-bar { position: absolute; bottom: 76px; left: 24px; width: 190px; }
+    #health-label { font-size: .62rem; color: #999; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 5px; }
+    #health-track { height: 7px; background: rgba(255,255,255,.12); border-radius: 4px; overflow: hidden; }
+    #health-fill  { height: 100%; width: 100%; background: #4caf50; transition: width .13s, background .13s; border-radius: 4px; }
+    #health-num   { margin-top: 5px; font-size: .88rem; font-weight: 700; color: #ddd; }
 
-    /* Ammo + weapon name */
-    #ammo-panel { position: absolute; bottom: 72px; right: 24px; text-align: right; }
-    #weapon-name { font-size: .65rem; color: #e0c060; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 2px; }
-    #ammo-row    { display: flex; align-items: baseline; justify-content: flex-end; gap: 2px; }
-    #ammo-count  { font-size: 2.2rem; font-weight: 700; line-height: 1; }
-    #ammo-max    { font-size: 1rem; color: #888; }
-    #reload-msg  { font-size: .75rem; color: #e0c060; letter-spacing: .1em; min-height: 16px; margin-top: 2px; }
+    /* Ammo panel */
+    #ammo-panel  { position: absolute; bottom: 76px; right: 24px; text-align: right; }
+    #weapon-name { font-size: .62rem; color: #e8c86a; letter-spacing: .16em; text-transform: uppercase; margin-bottom: 3px; }
+    #ammo-row    { display: flex; align-items: baseline; justify-content: flex-end; gap: 3px; }
+    #ammo-count  { font-size: 2.4rem; font-weight: 700; line-height: 1; color: #fff; }
+    #ammo-max    { font-size: 1.1rem; color: #666; }
+    #reload-msg  { font-size: .72rem; color: #e8c86a; letter-spacing: .12em; min-height: 16px; margin-top: 3px; }
 
-    /* Weapon slots (bottom centre) */
-    #weapon-bar { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
-    .weap-slot {
-      width: 54px; height: 54px; background: rgba(0,0,0,.55); border: 1px solid #444;
-      border-radius: 6px; display: flex; flex-direction: column; align-items: center;
-      justify-content: center; gap: 2px; transition: border-color .1s, background .1s;
-    }
-    .weap-slot.active { border-color: #e0c060; background: rgba(224,192,96,.15); }
-    .weap-slot .slot-key  { font-size: .6rem; color: #888; }
-    .weap-slot .slot-name { font-size: .55rem; color: #ccc; text-align: center; line-height: 1.2; }
-    .weap-slot.active .slot-name { color: #e0c060; }
+    /* Weapon slots */
+    #weapon-bar { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); display: flex; gap: 7px; }
+    .weap-slot { width: 58px; height: 58px; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.15); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; transition: border-color .12s, background .12s; backdrop-filter: blur(4px); }
+    .weap-slot.active { border-color: #e8c86a; background: rgba(232,200,106,.14); }
+    .weap-slot .slot-key  { font-size: .58rem; color: #777; }
+    .weap-slot .slot-name { font-size: .54rem; color: #bbb; text-align: center; line-height: 1.25; }
+    .weap-slot.active .slot-name { color: #e8c86a; }
 
     /* Kill feed */
-    #killfeed { position: absolute; top: 16px; right: 16px; width: 260px; display: flex; flex-direction: column; gap: 4px; }
-    .kf-entry { background: rgba(0,0,0,.6); border-radius: 4px; padding: 3px 8px; font-size: .78rem; animation: kfFade 4s forwards; }
-    .kf-you { color: #e0c060; font-weight: 700; }
-    .kf-x   { color: #f44336; margin: 0 4px; }
+    #killfeed { position: absolute; top: 16px; right: 16px; width: 265px; display: flex; flex-direction: column; gap: 5px; }
+    .kf-entry { background: rgba(0,0,0,.62); backdrop-filter: blur(4px); border-left: 2px solid rgba(255,255,255,.2); border-radius: 4px; padding: 4px 10px; font-size: .78rem; animation: kfFade 4s forwards; }
+    .kf-you { color: #e8c86a; font-weight: 700; }
+    .kf-x   { color: #e05050; margin: 0 5px; }
     @keyframes kfFade { 0%,70%{opacity:1} 100%{opacity:0} }
 
-    /* Hit-marker */
-    #hitmarker {
-      position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
-      width: 18px; height: 18px; opacity: 0; pointer-events: none; z-index: 30;
-      border: 2px solid #ff4040; border-radius: 50%;
-      transition: opacity .06s;
-    }
+    /* Hit marker */
+    #hitmarker { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 18px; height: 18px; opacity: 0; pointer-events: none; z-index: 30; border: 2px solid #ff4040; border-radius: 50%; transition: opacity .06s; }
     #hitmarker.flash { opacity: 1; }
 
+    /* Damage vignette */
+    #hit-vignette { position: fixed; inset: 0; pointer-events: none; z-index: 28; opacity: 0; background: radial-gradient(ellipse at 50% 50%, transparent 50%, rgba(220,30,30,.55) 100%); transition: opacity .08s; }
+    #hit-vignette.flash { opacity: 1; transition: opacity .08s; animation: vignetteFade .5s forwards; }
+    @keyframes vignetteFade { 0%{opacity:1} 100%{opacity:0} }
+
+    /* Sniper scope */
+    #scope { position: fixed; inset: 0; display: none; pointer-events: none; z-index: 25; }
+    #scope.visible { display: block; }
+    #scope .scope-bg { position: absolute; inset: 0; background: radial-gradient(circle 36vh at 50% 50%, transparent 35.5vh, rgba(6,8,12,.97) 36vh); }
+    #scope .scope-ring { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 72vh; height: 72vh; border-radius: 50%; border: 1.5px solid rgba(180,200,180,.55); }
+    #scope .scope-lines { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 72vh; height: 72vh; }
+    #scope .scope-lines::before, #scope .scope-lines::after { content: ''; position: absolute; background: rgba(180,200,180,.6); }
+    #scope .scope-lines::before { left: 50%; top: 0; width: 1px; height: 100%; transform: translateX(-50%); }
+    #scope .scope-lines::after  { top: 50%; left: 0; height: 1px; width: 100%; transform: translateY(-50%); }
+    /* Mil-dot markings */
+    #scope .scope-dot { position: absolute; width: 4px; height: 4px; background: rgba(180,200,180,.7); border-radius: 50%; transform: translate(-50%,-50%); }
+
     /* Scoreboard */
-    #scoreboard { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.75); z-index: 50; }
+    #scoreboard { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.78); z-index: 50; }
     #scoreboard.visible { display: flex; }
-    .sb-panel { background: #1a1a2e; border: 1px solid #444; border-radius: 10px; width: min(500px, 90vw); padding: 24px; }
-    .sb-panel h2 { text-align: center; margin-bottom: 16px; color: #e0c060; }
-    .sb-row { display: grid; grid-template-columns: 1fr 60px 60px 60px; gap: 8px; padding: 6px 8px; border-radius: 4px; }
-    .sb-row.header { color: #aaa; font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; }
+    .sb-panel { background: #141824; border: 1px solid #333; border-radius: 12px; width: min(500px,90vw); padding: 28px; box-shadow: 0 16px 48px rgba(0,0,0,.6); }
+    .sb-panel h2 { text-align: center; margin-bottom: 18px; color: #e8c86a; font-size: 1.1rem; letter-spacing: .1em; text-transform: uppercase; }
+    .sb-row { display: grid; grid-template-columns: 1fr 60px 60px 60px; gap: 8px; padding: 7px 10px; border-radius: 5px; }
+    .sb-row.header { color: #666; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; }
     .sb-row:not(.header):nth-child(odd) { background: rgba(255,255,255,.04); }
-    .sb-row span { text-align: center; }
-    .sb-row span:first-child { text-align: left; }
-    .sb-me { color: #e0c060; font-weight: 700; }
+    .sb-row span { text-align: center; } .sb-row span:first-child { text-align: left; }
+    .sb-me { color: #e8c86a; font-weight: 700; }
 
     /* Respawn */
-    #respawn { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(180,0,0,.22); z-index: 40; }
+    #respawn { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(150,0,0,.18); z-index: 40; }
     #respawn.visible { display: flex; }
-    #respawn p { font-size: 2rem; font-weight: 700; text-shadow: 0 2px 8px #000; }
+    #respawn p { font-size: 1.9rem; font-weight: 700; text-shadow: 0 2px 12px #000; letter-spacing: .03em; }
 
-    /* Pointer-lock hint */
-    #lock-prompt { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.6); padding: 6px 16px; border-radius: 20px; font-size: .8rem; color: #ccc; pointer-events: none; transition: opacity .3s; }
+    /* Lock prompt */
+    #lock-prompt { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.65); backdrop-filter: blur(6px); padding: 7px 18px; border-radius: 20px; font-size: .78rem; color: #aaa; pointer-events: none; transition: opacity .3s; white-space: nowrap; }
     #lock-prompt.hidden { opacity: 0; }
 
     /* Name labels */
-    .name-label { position: fixed; transform: translateX(-50%); font-size: .68rem; color: #fff; background: rgba(0,0,0,.55); padding: 1px 6px; border-radius: 3px; pointer-events: none; white-space: nowrap; z-index: 20; }
+    .name-label { position: fixed; transform: translateX(-50%); font-size: .67rem; color: #fff; background: rgba(0,0,0,.55); padding: 1px 7px; border-radius: 3px; pointer-events: none; white-space: nowrap; z-index: 20; }
   </style>
 </head>
 <body>
@@ -107,9 +113,9 @@
 <div id="lobby">
   <div class="lobby-card">
     <h1>FPS Arena</h1>
-    <p>Multiplayer first-person shooter. Enter your name and join.</p>
+    <p>Multiplayer first-person shooter.<br>Enter your name and join the battle.</p>
     <input id="name-input" type="text" placeholder="Your name" maxlength="20" autocomplete="off" />
-    <button id="join-btn">Play</button>
+    <button id="join-btn">Play Now</button>
     <div id="conn-status">Connecting…</div>
   </div>
 </div>
@@ -135,29 +141,35 @@
     <div id="reload-msg"></div>
   </div>
 
-  <!-- Weapon selector bar -->
   <div id="weapon-bar">
-    <div class="weap-slot active" data-weapon="pistol">
-      <span class="slot-key">1</span>
-      <span class="slot-name">Pistol</span>
-    </div>
-    <div class="weap-slot" data-weapon="rifle">
-      <span class="slot-key">2</span>
-      <span class="slot-name">Rifle</span>
-    </div>
-    <div class="weap-slot" data-weapon="shotgun">
-      <span class="slot-key">3</span>
-      <span class="slot-name">Shotgun</span>
-    </div>
-    <div class="weap-slot" data-weapon="sniper">
-      <span class="slot-key">4</span>
-      <span class="slot-name">Sniper</span>
-    </div>
+    <div class="weap-slot active" data-weapon="pistol"><span class="slot-key">1</span><span class="slot-name">Pistol</span></div>
+    <div class="weap-slot"        data-weapon="rifle">  <span class="slot-key">2</span><span class="slot-name">Rifle</span></div>
+    <div class="weap-slot"        data-weapon="shotgun"><span class="slot-key">3</span><span class="slot-name">Shotgun</span></div>
+    <div class="weap-slot"        data-weapon="sniper"> <span class="slot-key">4</span><span class="slot-name">Sniper</span></div>
   </div>
 
   <div id="killfeed"></div>
   <div id="hitmarker"></div>
-  <div id="lock-prompt">Click to capture mouse • WASD move • RMB aim • LMB shoot • 1-4 weapons • R reload • Tab scores</div>
+  <div id="lock-prompt">Click to capture mouse &nbsp;·&nbsp; WASD move &nbsp;·&nbsp; RMB aim &nbsp;·&nbsp; LMB shoot &nbsp;·&nbsp; 1–4 weapons &nbsp;·&nbsp; R reload &nbsp;·&nbsp; Tab scores</div>
+</div>
+
+<!-- Hit vignette (outside #hud so it's always rendered) -->
+<div id="hit-vignette"></div>
+
+<!-- Sniper scope overlay -->
+<div id="scope">
+  <div class="scope-bg"></div>
+  <div class="scope-ring"></div>
+  <div class="scope-lines">
+    <!-- Mil-dots on vertical line -->
+    <div class="scope-dot" style="left:50%;top:calc(50% - 15vh)"></div>
+    <div class="scope-dot" style="left:50%;top:calc(50% + 15vh)"></div>
+    <div class="scope-dot" style="left:50%;top:calc(50% - 25vh)"></div>
+    <div class="scope-dot" style="left:50%;top:calc(50% + 25vh)"></div>
+    <!-- Mil-dots on horizontal line -->
+    <div class="scope-dot" style="top:50%;left:calc(50% - 15vh)"></div>
+    <div class="scope-dot" style="top:50%;left:calc(50% + 15vh)"></div>
+  </div>
 </div>
 
 <!-- Scoreboard -->
@@ -165,17 +177,13 @@
   <div class="sb-panel">
     <h2>Scoreboard</h2>
     <div id="sb-rows">
-      <div class="sb-row header">
-        <span>Player</span><span>K</span><span>D</span><span>HP</span>
-      </div>
+      <div class="sb-row header"><span>Player</span><span>K</span><span>D</span><span>HP</span></div>
     </div>
   </div>
 </div>
 
-<!-- Respawn overlay -->
-<div id="respawn">
-  <p>You were eliminated — respawning…</p>
-</div>
+<!-- Respawn -->
+<div id="respawn"><p>You were eliminated — respawning…</p></div>
 
 <script type="module" src="/src/main.js"></script>
 </body>

@@ -1,41 +1,44 @@
 import {
   PLAYER_SPEED, PLAYER_SPRINT, PLAYER_ADS_MULT, PLAYER_JUMP, GRAVITY,
-  PLAYER_EYE_OFFSET, ARENA_HALF,
-  WEAPONS, WEAPON_KEYS,
+  PLAYER_EYE_OFFSET, ARENA_HALF, WEAPONS, WEAPON_KEYS,
 } from '../../shared/constants.js';
+import { moveAndCollide } from '../../shared/collision.js';
 
 const MOUSE_SENS    = 0.0018;
-const RECONCILE_DST = 2.0;
+const RECONCILE_DST = 2.5;
 
 export class LocalPlayer {
   constructor() {
-    // Physics (y = feet)
-    this.x = 0; this.y = 1; this.z = 0;
+    this.x = 0; this.y = 0; this.z = 0;
     this.vx = 0; this.vy = 0; this.vz = 0;
-    this.onGround = false;
+    this.onGround  = false;
+    this.yaw       = 0;
+    this.pitch     = 0;
+    this.ads       = false;
 
-    // Look
-    this.yaw   = 0;
-    this.pitch = 0;
-    this.ads   = false;   // aim-down-sights (right mouse button held)
+    // Head-bob + landing-squish (client-only, cosmetic)
+    this._bobPhase   = 0;   // oscillator phase
+    this._bobAmt     = 0;   // current bob magnitude
+    this._squish     = 0;   // camera dip on landing
+    this._prevVy     = 0;
+    this._prevGround = false;
 
     // Weapon
     this.currentWeapon = 'pistol';
     this.ammo          = WEAPONS.pistol.ammo;
     this.reloading     = false;
 
-    // Health / game state
-    this.health  = 100;
-    this.dead    = false;
-    this.kills   = 0;
-    this.deaths  = 0;
+    // State
+    this.health = 100;
+    this.dead   = false;
+    this.kills  = 0;
+    this.deaths = 0;
 
-    // Callbacks set by main.js
-    this.onWeaponSwitch = null; // (weaponId) => void
-    this.onShoot        = null; // () => void — trigger shoot via network
+    // Callbacks wired by main.js
+    this.onWeaponSwitch = null;
+    this.onReload       = null;
 
     this.keys = { forward: false, back: false, left: false, right: false, jump: false, sprint: false };
-
     this._inputSeq = 0;
     this._history  = [];
 
@@ -56,16 +59,12 @@ export class LocalPlayer {
     window.addEventListener('keydown', (e) => {
       if (this.dead) return;
       if (keyMap[e.code]) { this.keys[keyMap[e.code]] = true; e.preventDefault(); }
-
-      // Weapon slots 1-4
       if (e.code === 'Digit1') this._switchWeapon('pistol');
       if (e.code === 'Digit2') this._switchWeapon('rifle');
       if (e.code === 'Digit3') this._switchWeapon('shotgun');
       if (e.code === 'Digit4') this._switchWeapon('sniper');
-
-      // Reload
       if (e.code === 'KeyR' && !this.reloading && this.ammo < WEAPONS[this.currentWeapon].ammo) {
-        this.reloading = true; // optimistic; server confirms
+        this.reloading = true;
         this.onReload?.();
       }
     });
@@ -74,28 +73,18 @@ export class LocalPlayer {
       if (keyMap[e.code]) this.keys[keyMap[e.code]] = false;
     });
 
-    // Mouse look — only when pointer is locked
     document.addEventListener('mousemove', (e) => {
       if (!document.pointerLockElement) return;
       this.yaw   -= e.movementX * MOUSE_SENS;
       this.pitch -= e.movementY * MOUSE_SENS;
-      this.pitch  = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, this.pitch));
+      this.pitch  = Math.max(-Math.PI / 2 + 0.02, Math.min(Math.PI / 2 - 0.02, this.pitch));
     });
 
-    // Right-click = ADS (contextmenu suppressed by canvas listener in main.js)
     window.addEventListener('mousedown', (e) => {
-      if (e.button === 2 && document.pointerLockElement) {
-        this.ads = true;
-        e.preventDefault();
-      }
+      if (e.button === 2 && document.pointerLockElement) { this.ads = true; e.preventDefault(); }
     });
-    window.addEventListener('mouseup', (e) => {
-      if (e.button === 2) this.ads = false;
-    });
-    // Prevent browser context menu from appearing in-game
-    window.addEventListener('contextmenu', (e) => {
-      if (document.pointerLockElement) e.preventDefault();
-    });
+    window.addEventListener('mouseup',   (e) => { if (e.button === 2) this.ads = false; });
+    window.addEventListener('contextmenu', (e) => { if (document.pointerLockElement) e.preventDefault(); });
   }
 
   _switchWeapon(id) {
@@ -109,9 +98,8 @@ export class LocalPlayer {
 
     const base  = this.keys.sprint ? PLAYER_SPRINT : PLAYER_SPEED;
     const speed = this.ads ? base * PLAYER_ADS_MULT : base;
-
-    const cos = Math.cos(this.yaw);
-    const sin = Math.sin(this.yaw);
+    const cos   = Math.cos(this.yaw);
+    const sin   = Math.sin(this.yaw);
 
     let mx = 0, mz = 0;
     if (this.keys.forward) { mx -= sin; mz -= cos; }
@@ -119,22 +107,43 @@ export class LocalPlayer {
     if (this.keys.left)    { mx -= cos; mz += sin; }
     if (this.keys.right)   { mx += cos; mz -= sin; }
 
-    const len = Math.sqrt(mx*mx + mz*mz);
-    if (len > 0) { mx = (mx/len)*speed; mz = (mz/len)*speed; }
+    const len = Math.sqrt(mx * mx + mz * mz);
+    if (len > 0) { mx = (mx / len) * speed; mz = (mz / len) * speed; }
 
     this.vx = mx; this.vz = mz;
 
     if (this.keys.jump && this.onGround) { this.vy = PLAYER_JUMP; this.onGround = false; }
     this.vy += GRAVITY * dt;
-    this.x  += this.vx * dt;
-    this.y  += this.vy * dt;
-    this.z  += this.vz * dt;
 
-    if (this.y <= 1) { this.y = 1; this.vy = 0; this.onGround = true; }
-    else              { this.onGround = false; }
+    this._prevVy     = this.vy;
+    this._prevGround = this.onGround;
+
+    // Collide with map geometry (shared logic)
+    const c = moveAndCollide(this.x, this.y, this.z, this.vx, this.vy, this.vz, dt, this.onGround);
+    this.x = c.px; this.y = c.py; this.z = c.pz;
+    this.vx = c.vx; this.vy = c.vy; this.vz = c.vz;
+    this.onGround = c.onGround;
 
     this.x = Math.max(-ARENA_HALF, Math.min(ARENA_HALF, this.x));
     this.z = Math.max(-ARENA_HALF, Math.min(ARENA_HALF, this.z));
+
+    // ── Head bob ──────────────────────────────────────────────────────────
+    const moving = this.onGround && (mx !== 0 || mz !== 0);
+    const bobSpeed = this.keys.sprint ? 11 : 7.5;
+    if (moving) {
+      this._bobPhase += dt * bobSpeed;
+      this._bobAmt    = Math.min(this._bobAmt + dt * 6, 1);
+    } else {
+      this._bobAmt = Math.max(0, this._bobAmt - dt * 8);
+    }
+
+    // ── Landing squish ─────────────────────────────────────────────────────
+    const justLanded = !this._prevGround && this.onGround;
+    if (justLanded) {
+      const impact = Math.abs(this._prevVy);
+      this._squish = Math.min(0.18, impact * 0.007);
+    }
+    this._squish *= Math.pow(0.04, dt); // quick spring recovery
 
     this._inputSeq++;
     this._history.push({ seq: this._inputSeq, x: this.x, y: this.y, z: this.z });
@@ -143,28 +152,22 @@ export class LocalPlayer {
 
   reconcile(s) {
     if (!s) return;
-    this.health        = s.health;
-    this.ammo          = s.ammo;
-    this.reloading     = s.reloading;
-    this.dead          = s.dead;
-    this.kills         = s.kills;
-    this.deaths        = s.deaths;
-    // Don't overwrite currentWeapon from server — client is authoritative on weapon choice
+    this.health    = s.health;
+    this.ammo      = s.ammo;
+    this.reloading = s.reloading;
+    this.dead      = s.dead;
+    this.kills     = s.kills;
+    this.deaths    = s.deaths;
 
-    const dx = s.x - this.x, dy = s.y - this.y, dz = s.z - this.z;
-    if (Math.sqrt(dx*dx + dy*dy + dz*dz) > RECONCILE_DST) {
-      this.x = s.x; this.y = s.y; this.z = s.z;
-    }
+    const d2 = (s.x-this.x)**2 + (s.y-this.y)**2 + (s.z-this.z)**2;
+    if (d2 > RECONCILE_DST ** 2) { this.x = s.x; this.y = s.y; this.z = s.z; }
   }
 
   currentInput() {
     return {
-      forward: this.keys.forward,
-      back:    this.keys.back,
-      left:    this.keys.left,
-      right:   this.keys.right,
-      jump:    this.keys.jump,
-      sprint:  this.keys.sprint,
+      forward: this.keys.forward, back:   this.keys.back,
+      left:    this.keys.left,    right:  this.keys.right,
+      jump:    this.keys.jump,    sprint: this.keys.sprint,
       ads:     this.ads,
       weapon:  this.currentWeapon,
       yaw:     this.yaw,
@@ -172,6 +175,19 @@ export class LocalPlayer {
     };
   }
 
-  eyePosition() { return { x: this.x, y: this.y + PLAYER_EYE_OFFSET, z: this.z }; }
-  get seq()     { return this._inputSeq; }
+  // Eye position with head-bob and landing-squish applied
+  eyePosition() {
+    const bobY   = Math.sin(this._bobPhase) * 0.045 * this._bobAmt;
+    const bobX   = Math.sin(this._bobPhase * 0.5) * 0.022 * this._bobAmt;
+    return {
+      x: this.x + bobX,
+      y: this.y + PLAYER_EYE_OFFSET + bobY - this._squish,
+      z: this.z,
+    };
+  }
+
+  // Separate bob roll for camera lean (used by Game.js)
+  get bobRoll() { return Math.sin(this._bobPhase * 0.5) * 0.012 * this._bobAmt; }
+
+  get seq() { return this._inputSeq; }
 }

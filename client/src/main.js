@@ -48,6 +48,7 @@ function attemptJoin() {
       if (!inGame) return;
       if (msg.shooterId === net.myId) hud.flashHitmarker(msg.kill);
       if (msg.kill) hud.addKillFeed(msg.shooterName, msg.targetName, msg.shooterId, msg.targetId);
+      if (msg.targetId === net.myId) hud.showHitVignette();
     },
 
     onPlayerJoin(msg)  { if (inGame) game.addRemotePlayer(msg.id, msg.name); },
@@ -95,16 +96,16 @@ function startGame(myId, initialSnapshot) {
     if (!inGame || !document.pointerLockElement || localPlayer.dead) return;
     if (e.button === 0) {
       net.sendShoot(localPlayer.yaw, localPlayer.pitch, localPlayer.currentWeapon);
-      game.triggerKick();
+      game.triggerKick(localPlayer.currentWeapon);
     }
   });
 
   // ADS crosshair / HUD effect
   window.addEventListener('mousedown', (e) => {
-    if (e.button === 2) hud.setADS(true);
+    if (e.button === 2) hud.setADS(true, localPlayer.currentWeapon);
   });
   window.addEventListener('mouseup', (e) => {
-    if (e.button === 2) hud.setADS(false);
+    if (e.button === 2) hud.setADS(false, localPlayer.currentWeapon);
   });
 
   // Send inputs ~20 Hz
