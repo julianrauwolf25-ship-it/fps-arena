@@ -193,19 +193,18 @@ export class LocalPlayer {
     };
   }
 
-  // Eye position with head-bob and landing-squish applied
+  // Eye position. No walking head-bob (it made the view wobble constantly);
+  // only the brief landing-squish dip remains.
   eyePosition() {
-    const bobY   = Math.sin(this._bobPhase) * 0.045 * this._bobAmt;
-    const bobX   = Math.sin(this._bobPhase * 0.5) * 0.022 * this._bobAmt;
     return {
-      x: this.x + bobX,
-      y: this.y + PLAYER_EYE_OFFSET + bobY - this._squish,
+      x: this.x,
+      y: this.y + PLAYER_EYE_OFFSET - this._squish,
       z: this.z,
     };
   }
 
-  // Separate bob roll for camera lean (used by Game.js)
-  get bobRoll() { return Math.sin(this._bobPhase * 0.5) * 0.012 * this._bobAmt; }
+  // Camera lean disabled along with the head-bob.
+  get bobRoll() { return 0; }
 
   get seq() { return this._inputSeq; }
 }
