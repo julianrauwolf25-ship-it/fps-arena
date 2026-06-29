@@ -6,225 +6,177 @@
   <title>FPS Arena</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      background: #111;
-      color: #fff;
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      overflow: hidden;
-      user-select: none;
-    }
-
+    body { background: #111; color: #fff; font-family: 'Segoe UI', system-ui, sans-serif; overflow: hidden; user-select: none; }
     canvas { display: block; width: 100vw; height: 100vh; }
 
-    /* ── Lobby overlay ──────────────────────────────────────────────────────── */
-    #lobby {
-      position: fixed; inset: 0;
-      display: flex; align-items: center; justify-content: center;
-      background: rgba(0,0,0,.85);
-      z-index: 100;
-    }
+    /* ── Lobby ─────────────────────────────────────────────────────────────── */
+    #lobby { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.85); z-index: 100; }
     #lobby.hidden { display: none; }
-    .lobby-card {
-      background: #1a1a2e;
-      border: 1px solid #444;
-      border-radius: 12px;
-      padding: 40px 48px;
-      text-align: center;
-      max-width: 380px;
-      width: 90%;
-    }
+    .lobby-card { background: #1a1a2e; border: 1px solid #444; border-radius: 12px; padding: 40px 48px; text-align: center; max-width: 380px; width: 90%; }
     .lobby-card h1 { font-size: 2rem; margin-bottom: 8px; color: #e0c060; }
     .lobby-card p  { color: #aaa; margin-bottom: 24px; font-size: .9rem; }
-    .lobby-card input {
-      width: 100%; padding: 10px 14px;
-      border-radius: 6px; border: 1px solid #555;
-      background: #222; color: #fff; font-size: 1rem;
-      margin-bottom: 16px; outline: none;
-    }
+    .lobby-card input { width: 100%; padding: 10px 14px; border-radius: 6px; border: 1px solid #555; background: #222; color: #fff; font-size: 1rem; margin-bottom: 16px; outline: none; }
     .lobby-card input:focus { border-color: #e0c060; }
-    .lobby-card button {
-      width: 100%; padding: 12px;
-      background: #e0c060; color: #111;
-      border: none; border-radius: 6px;
-      font-size: 1rem; font-weight: 700;
-      cursor: pointer; transition: opacity .15s;
-    }
+    .lobby-card button { width: 100%; padding: 12px; background: #e0c060; color: #111; border: none; border-radius: 6px; font-size: 1rem; font-weight: 700; cursor: pointer; }
     .lobby-card button:hover { opacity: .85; }
     #conn-status { margin-top: 14px; font-size: .85rem; color: #aaa; min-height: 20px; }
 
-    /* ── HUD ────────────────────────────────────────────────────────────────── */
-    #hud {
-      position: fixed; inset: 0; pointer-events: none;
-      display: none;          /* shown after joining */
-    }
+    /* ── HUD (hidden until in-game) ──────────────────────────────────────── */
+    #hud { position: fixed; inset: 0; pointer-events: none; display: none; }
 
     /* Crosshair */
-    #crosshair {
-      position: absolute; top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 16px; height: 16px;
-    }
-    #crosshair::before, #crosshair::after {
-      content: ''; position: absolute; background: rgba(255,255,255,.9);
-    }
-    #crosshair::before { left: 50%; top: 0; width: 1px; height: 100%; transform: translateX(-50%); }
-    #crosshair::after  { top: 50%; left: 0; height: 1px; width: 100%; transform: translateY(-50%); }
+    #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 20px; height: 20px; transition: width .1s, height .1s; }
+    #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,.9); transition: all .1s; }
+    #crosshair::before { left: 50%; top: 0; width: 1.5px; height: 100%; transform: translateX(-50%); }
+    #crosshair::after  { top: 50%; left: 0; height: 1.5px; width: 100%; transform: translateY(-50%); }
+    /* ADS = tiny dot crosshair */
+    #crosshair.ads { width: 4px; height: 4px; }
+    #crosshair.ads::before, #crosshair.ads::after { background: rgba(255,220,0,.95); }
 
     /* Health */
-    #health-bar {
-      position: absolute; bottom: 28px; left: 28px;
-      width: 200px;
-    }
-    #health-label { font-size: .7rem; color: #aaa; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 4px; }
-    #health-track {
-      height: 10px; background: #333; border-radius: 5px; overflow: hidden;
-    }
-    #health-fill {
-      height: 100%; width: 100%; background: #4caf50; transition: width .15s, background .15s;
-    }
-    #health-num { margin-top: 4px; font-size: .9rem; font-weight: 700; }
+    #health-bar { position: absolute; bottom: 72px; left: 24px; width: 180px; }
+    #health-label { font-size: .65rem; color: #aaa; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 4px; }
+    #health-track { height: 8px; background: #333; border-radius: 4px; overflow: hidden; }
+    #health-fill  { height: 100%; width: 100%; background: #4caf50; transition: width .12s, background .12s; }
+    #health-num   { margin-top: 4px; font-size: .9rem; font-weight: 700; }
 
-    /* Ammo */
-    #ammo {
-      position: absolute; bottom: 28px; right: 28px;
-      text-align: right;
+    /* Ammo + weapon name */
+    #ammo-panel { position: absolute; bottom: 72px; right: 24px; text-align: right; }
+    #weapon-name { font-size: .65rem; color: #e0c060; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 2px; }
+    #ammo-row    { display: flex; align-items: baseline; justify-content: flex-end; gap: 2px; }
+    #ammo-count  { font-size: 2.2rem; font-weight: 700; line-height: 1; }
+    #ammo-max    { font-size: 1rem; color: #888; }
+    #reload-msg  { font-size: .75rem; color: #e0c060; letter-spacing: .1em; min-height: 16px; margin-top: 2px; }
+
+    /* Weapon slots (bottom centre) */
+    #weapon-bar { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+    .weap-slot {
+      width: 54px; height: 54px; background: rgba(0,0,0,.55); border: 1px solid #444;
+      border-radius: 6px; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 2px; transition: border-color .1s, background .1s;
     }
-    #ammo-label { font-size: .7rem; color: #aaa; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 2px; }
-    #ammo-count { font-size: 2rem; font-weight: 700; color: #fff; }
-    #reload-msg  { font-size: .8rem; color: #e0c060; min-height: 18px; }
+    .weap-slot.active { border-color: #e0c060; background: rgba(224,192,96,.15); }
+    .weap-slot .slot-key  { font-size: .6rem; color: #888; }
+    .weap-slot .slot-name { font-size: .55rem; color: #ccc; text-align: center; line-height: 1.2; }
+    .weap-slot.active .slot-name { color: #e0c060; }
 
     /* Kill feed */
-    #killfeed {
-      position: absolute; top: 20px; right: 20px;
-      width: 280px; display: flex; flex-direction: column; gap: 4px;
-    }
-    .kf-entry {
-      background: rgba(0,0,0,.6); border-radius: 4px;
-      padding: 4px 8px; font-size: .8rem;
-      animation: kfFade 4s forwards;
-    }
-    .kf-entry .kf-you { color: #e0c060; font-weight: 700; }
+    #killfeed { position: absolute; top: 16px; right: 16px; width: 260px; display: flex; flex-direction: column; gap: 4px; }
+    .kf-entry { background: rgba(0,0,0,.6); border-radius: 4px; padding: 3px 8px; font-size: .78rem; animation: kfFade 4s forwards; }
+    .kf-you { color: #e0c060; font-weight: 700; }
+    .kf-x   { color: #f44336; margin: 0 4px; }
     @keyframes kfFade { 0%,70%{opacity:1} 100%{opacity:0} }
 
-    /* Scoreboard (Tab) */
-    #scoreboard {
-      position: fixed; inset: 0;
-      display: none; align-items: center; justify-content: center;
-      background: rgba(0,0,0,.75); z-index: 50;
+    /* Hit-marker */
+    #hitmarker {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      width: 18px; height: 18px; opacity: 0; pointer-events: none; z-index: 30;
+      border: 2px solid #ff4040; border-radius: 50%;
+      transition: opacity .06s;
     }
+    #hitmarker.flash { opacity: 1; }
+
+    /* Scoreboard */
+    #scoreboard { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.75); z-index: 50; }
     #scoreboard.visible { display: flex; }
-    .sb-panel {
-      background: #1a1a2e; border: 1px solid #444; border-radius: 10px;
-      width: min(500px, 90vw); padding: 24px; overflow: hidden;
-    }
+    .sb-panel { background: #1a1a2e; border: 1px solid #444; border-radius: 10px; width: min(500px, 90vw); padding: 24px; }
     .sb-panel h2 { text-align: center; margin-bottom: 16px; color: #e0c060; }
-    .sb-row {
-      display: grid; grid-template-columns: 1fr 60px 60px 60px;
-      gap: 8px; padding: 6px 8px; border-radius: 4px;
-    }
+    .sb-row { display: grid; grid-template-columns: 1fr 60px 60px 60px; gap: 8px; padding: 6px 8px; border-radius: 4px; }
     .sb-row.header { color: #aaa; font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; }
     .sb-row:not(.header):nth-child(odd) { background: rgba(255,255,255,.04); }
     .sb-row span { text-align: center; }
     .sb-row span:first-child { text-align: left; }
     .sb-me { color: #e0c060; font-weight: 700; }
 
-    /* Respawn overlay */
-    #respawn {
-      position: fixed; inset: 0; display: none;
-      align-items: center; justify-content: center;
-      background: rgba(200,0,0,.25); z-index: 40;
-    }
+    /* Respawn */
+    #respawn { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(180,0,0,.22); z-index: 40; }
     #respawn.visible { display: flex; }
-    #respawn-msg { font-size: 2rem; font-weight: 700; text-shadow: 0 2px 8px #000; }
+    #respawn p { font-size: 2rem; font-weight: 700; text-shadow: 0 2px 8px #000; }
 
-    /* Pointer-lock prompt */
-    #lock-prompt {
-      position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,.6); padding: 8px 18px; border-radius: 20px;
-      font-size: .85rem; color: #ccc; pointer-events: none;
-      transition: opacity .3s;
-    }
+    /* Pointer-lock hint */
+    #lock-prompt { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.6); padding: 6px 16px; border-radius: 20px; font-size: .8rem; color: #ccc; pointer-events: none; transition: opacity .3s; }
     #lock-prompt.hidden { opacity: 0; }
 
-    /* Hit-marker */
-    #hitmarker {
-      position: fixed; top: 50%; left: 50%;
-      transform: translate(-50%,-50%);
-      width: 20px; height: 20px; opacity: 0;
-      pointer-events: none; z-index: 30;
-      transition: opacity .08s;
-    }
-    #hitmarker.flash { opacity: 1; }
-    #hitmarker::before, #hitmarker::after {
-      content: ''; position: absolute; background: #ff4040;
-    }
-    #hitmarker::before { top: 0; left: 50%; width: 2px; height: 100%; transform: translateX(-50%); }
-    #hitmarker::after  { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
-
     /* Name labels */
-    .name-label {
-      position: fixed; transform: translateX(-50%);
-      font-size: .7rem; color: #fff;
-      background: rgba(0,0,0,.5); padding: 1px 6px; border-radius: 3px;
-      pointer-events: none; white-space: nowrap; z-index: 20;
-    }
+    .name-label { position: fixed; transform: translateX(-50%); font-size: .68rem; color: #fff; background: rgba(0,0,0,.55); padding: 1px 6px; border-radius: 3px; pointer-events: none; white-space: nowrap; z-index: 20; }
   </style>
 </head>
 <body>
 
-  <!-- Lobby -->
-  <div id="lobby">
-    <div class="lobby-card">
-      <h1>FPS Arena</h1>
-      <p>Multiplayer first-person shooter. Enter your name and join the battle.</p>
-      <input id="name-input" type="text" placeholder="Your name" maxlength="20" autocomplete="off" />
-      <button id="join-btn">Play</button>
-      <div id="conn-status">Connecting…</div>
+<!-- Lobby -->
+<div id="lobby">
+  <div class="lobby-card">
+    <h1>FPS Arena</h1>
+    <p>Multiplayer first-person shooter. Enter your name and join.</p>
+    <input id="name-input" type="text" placeholder="Your name" maxlength="20" autocomplete="off" />
+    <button id="join-btn">Play</button>
+    <div id="conn-status">Connecting…</div>
+  </div>
+</div>
+
+<canvas id="c"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="crosshair"></div>
+
+  <div id="health-bar">
+    <div id="health-label">Health</div>
+    <div id="health-track"><div id="health-fill"></div></div>
+    <div id="health-num">100</div>
+  </div>
+
+  <div id="ammo-panel">
+    <div id="weapon-name">Pistol</div>
+    <div id="ammo-row">
+      <span id="ammo-count">12</span>
+      <span id="ammo-max">/12</span>
+    </div>
+    <div id="reload-msg"></div>
+  </div>
+
+  <!-- Weapon selector bar -->
+  <div id="weapon-bar">
+    <div class="weap-slot active" data-weapon="pistol">
+      <span class="slot-key">1</span>
+      <span class="slot-name">Pistol</span>
+    </div>
+    <div class="weap-slot" data-weapon="rifle">
+      <span class="slot-key">2</span>
+      <span class="slot-name">Rifle</span>
+    </div>
+    <div class="weap-slot" data-weapon="shotgun">
+      <span class="slot-key">3</span>
+      <span class="slot-name">Shotgun</span>
+    </div>
+    <div class="weap-slot" data-weapon="sniper">
+      <span class="slot-key">4</span>
+      <span class="slot-name">Sniper</span>
     </div>
   </div>
 
-  <!-- Three.js canvas -->
-  <canvas id="c"></canvas>
+  <div id="killfeed"></div>
+  <div id="hitmarker"></div>
+  <div id="lock-prompt">Click to capture mouse • WASD move • RMB aim • LMB shoot • 1-4 weapons • R reload • Tab scores</div>
+</div>
 
-  <!-- HUD (hidden until in-game) -->
-  <div id="hud">
-    <div id="crosshair"></div>
-
-    <div id="health-bar">
-      <div id="health-label">Health</div>
-      <div id="health-track"><div id="health-fill"></div></div>
-      <div id="health-num">100</div>
-    </div>
-
-    <div id="ammo">
-      <div id="ammo-label">Ammo</div>
-      <div id="ammo-count">30</div>
-      <div id="reload-msg"></div>
-    </div>
-
-    <div id="killfeed"></div>
-    <div id="hitmarker"></div>
-    <div id="lock-prompt">Click to capture mouse</div>
-  </div>
-
-  <!-- Scoreboard (Tab key) -->
-  <div id="scoreboard">
-    <div class="sb-panel">
-      <h2>Scoreboard</h2>
-      <div id="sb-rows">
-        <div class="sb-row header">
-          <span>Player</span><span>K</span><span>D</span><span>HP</span>
-        </div>
+<!-- Scoreboard -->
+<div id="scoreboard">
+  <div class="sb-panel">
+    <h2>Scoreboard</h2>
+    <div id="sb-rows">
+      <div class="sb-row header">
+        <span>Player</span><span>K</span><span>D</span><span>HP</span>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- Respawn screen -->
-  <div id="respawn">
-    <div id="respawn-msg">You were eliminated…</div>
-  </div>
+<!-- Respawn overlay -->
+<div id="respawn">
+  <p>You were eliminated — respawning…</p>
+</div>
 
-  <script type="module" src="/src/main.js"></script>
+<script type="module" src="/src/main.js"></script>
 </body>
 </html>

@@ -58,7 +58,7 @@ export class Network {
 
   sendInput(input, seq) { this.send({ type: 'input', input, seq }); }
 
-  sendShoot(yaw, pitch) { this.send({ type: 'shoot', yaw, pitch }); }
+  sendShoot(yaw, pitch, weapon) { this.send({ type: 'shoot', yaw, pitch, weapon }); }
 
   sendReload() { this.send({ type: 'reload' }); }
 }
