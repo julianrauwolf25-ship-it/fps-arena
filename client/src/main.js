@@ -130,7 +130,8 @@ function tryShoot() {
   lastShotMs = now;
 
   net.sendShoot(localPlayer.yaw, localPlayer.pitch, localPlayer.currentWeapon);
-  game.triggerKick(localPlayer.currentWeapon);
+  // Visual feedback = bullet holes where the rounds land (no muzzle flash / recoil)
+  game.spawnImpacts(localPlayer.eyePosition(), localPlayer.yaw, localPlayer.pitch, localPlayer.currentWeapon);
 }
 
 // ── Game loop ─────────────────────────────────────────────────────────────────

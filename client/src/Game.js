@@ -69,14 +69,13 @@ export class Game {
     this.canvas        = canvas;
     this.remotePlayers = new Map();
     this._adsLerp      = 0;
-    this._muzzleTimer  = 0;
 
     this._initRenderer();
     this._initScene();
     this._initCamera();
     this._buildMap();
     this._buildViewmodel();
-    this._buildMuzzleFlash();
+    this._buildImpactPool();
 
     window.addEventListener('resize', () => this._onResize());
     this._onResize();
@@ -162,6 +161,9 @@ export class Game {
     floor.receiveShadow = true;
     this.scene.add(floor);
 
+    // Meshes that bullets can hit (used for impact-decal raycasting)
+    this._collidables = [floor];
+
     // Arena walls — tall concrete
     const wallH  = 8;
     const half   = ARENA_HALF;
@@ -176,6 +178,7 @@ export class Game {
       m.position.set(d.x, d.y, d.z);
       m.castShadow = m.receiveShadow = true;
       this.scene.add(m);
+      this._collidables.push(m);
     }
 
     // Cover boxes — alternate concrete / metal based on size
@@ -186,6 +189,7 @@ export class Game {
       mesh.position.set(b.x, b.y, b.z);
       mesh.castShadow = mesh.receiveShadow = true;
       this.scene.add(mesh);
+      this._collidables.push(mesh);
     }
 
     // Decorative pillars at map centre for visual interest
@@ -195,6 +199,7 @@ export class Game {
       pillar.position.set(x, 2, z);
       pillar.castShadow = pillar.receiveShadow = true;
       this.scene.add(pillar);
+      this._collidables.push(pillar);
     }
 
     // Ground markings (lines / decals via thin planes)
@@ -228,7 +233,6 @@ export class Game {
       this._weaponGroups[id] = g;
     }
 
-    this._kickZ       = 0;
     this._swayX       = 0;
     this._swayY       = 0;
     this._prevMouseDX = 0;
@@ -304,56 +308,94 @@ export class Game {
     return grp;
   }
 
-  // ── Muzzle flash ───────────────────────────────────────────────────────────
+  // ── Bullet impact decals ─────────────────────────────────────────────────
+  // No muzzle flash, no recoil animation — the only shooting feedback is a
+  // bullet hole where the round actually strikes world geometry.
 
-  _buildMuzzleFlash() {
-    // Viewmodel-space point light + cross sprite
-    this._muzzleLight = new THREE.PointLight(0xff9944, 0, 5, 2);
-    this._muzzleLight.position.set(0, 0.028, -0.7);
-    this.vmScene.add(this._muzzleLight);
+  _buildImpactPool() {
+    this._raycaster = new THREE.Raycaster();
+    this._raycaster.far = 200;
 
-    // World-space muzzle light (illuminates nearby geometry briefly)
-    this._worldMuzzleLight = new THREE.PointLight(0xff8833, 0, 8, 2);
-    this.scene.add(this._worldMuzzleLight);
-
-    // Soft radial muzzle flash — a glow texture with additive blending so it
-    // reads as light, not a hard white rectangle.
-    const flashTex = canvasTex((ctx, s) => {
+    // Dark "bullet hole" texture: black centre, faint cracked ring, soft edge.
+    const holeTex = canvasTex((ctx, s) => {
       ctx.clearRect(0, 0, s, s);
       const g = ctx.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
-      g.addColorStop(0.0, 'rgba(255,255,240,1)');
-      g.addColorStop(0.25, 'rgba(255,220,130,0.9)');
-      g.addColorStop(0.55, 'rgba(255,150,40,0.35)');
-      g.addColorStop(1.0, 'rgba(255,120,0,0)');
+      g.addColorStop(0.0, 'rgba(10,8,6,0.95)');
+      g.addColorStop(0.45, 'rgba(20,16,12,0.85)');
+      g.addColorStop(0.7, 'rgba(40,34,28,0.35)');
+      g.addColorStop(1.0, 'rgba(0,0,0,0)');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, s, s);
+      // A few light cracks radiating out
+      ctx.strokeStyle = 'rgba(120,110,100,0.5)';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 7; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = s * (0.15 + Math.random() * 0.25);
+        ctx.beginPath();
+        ctx.moveTo(s/2, s/2);
+        ctx.lineTo(s/2 + Math.cos(a) * r, s/2 + Math.sin(a) * r);
+        ctx.stroke();
+      }
     }, 128);
 
-    const flashMat = new THREE.MeshBasicMaterial({
-      map: flashTex, transparent: true, opacity: 0, depthTest: false,
-      depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-    });
-    this._muzzleSprite = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), flashMat);
-    this._muzzleSprite.position.set(0, 0.028, -0.72);
-    this._muzzleSprite.renderOrder = 999;
-    this.vmScene.add(this._muzzleSprite);
+    // Pool of reusable decal quads (round-robin so we never grow unbounded)
+    this._impactPool = [];
+    this._impactIdx  = 0;
+    const POOL = 40;
+    for (let i = 0; i < POOL; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        map: holeTex, transparent: true, opacity: 0,
+        depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2,
+      });
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.18), mat);
+      m.visible    = false;
+      m._born      = 0;     // timestamp when last spawned (for fade)
+      this.scene.add(m);
+      this._impactPool.push(m);
+    }
   }
 
-  triggerKick(weaponId) {
-    const w     = WEAPONS[weaponId] ?? WEAPONS.pistol;
-    this._kickZ = 0.07;
-    this._muzzleTimer = 60; // ms to show flash (short & snappy)
+  // Called once per shot from main.js. Raycasts each pellet against the world
+  // and drops a bullet hole at the first surface it hits.
+  spawnImpacts(eye, yaw, pitch, weaponId) {
+    const weap    = WEAPONS[weaponId] ?? WEAPONS.pistol;
+    // Cap visible holes per shot (shotgun has many pellets)
+    const pellets = Math.min(weap.pellets, 6);
 
-    this._muzzleLight.intensity       = 16;
-    this._worldMuzzleLight.intensity  = 10;
+    for (let p = 0; p < pellets; p++) {
+      const sy = (Math.random() - 0.5) * weap.spread;
+      const sp = (Math.random() - 0.5) * weap.spread;
+      const ey = yaw + sy, ep = pitch + sp;
 
-    // Randomise the flash so repeated shots don't look mechanical
-    const scale = 0.7 + Math.random() * 0.6;
-    this._muzzleSprite.scale.set(scale, scale, scale);
-    this._muzzleSprite.rotation.z      = Math.random() * Math.PI * 2;
-    this._muzzleSprite.material.opacity = 1;
+      const dir = new THREE.Vector3(
+        -Math.sin(ey) * Math.cos(ep),
+         Math.sin(ep),
+        -Math.cos(ey) * Math.cos(ep),
+      ).normalize();
 
-    // Recoil bump on pitch/yaw is handled by main.js via localPlayer
+      this._raycaster.set(new THREE.Vector3(eye.x, eye.y, eye.z), dir);
+      const hits = this._raycaster.intersectObjects(this._collidables, false);
+      if (!hits.length) continue;
+
+      const hit = hits[0];
+      const m   = this._impactPool[this._impactIdx];
+      this._impactIdx = (this._impactIdx + 1) % this._impactPool.length;
+
+      // Place slightly off the surface, oriented to the surface normal
+      const n = hit.face
+        ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld)
+        : dir.clone().negate();
+      m.position.copy(hit.point).addScaledVector(n, 0.012);
+      m.lookAt(hit.point.clone().add(n));
+      m.rotation.z = Math.random() * Math.PI * 2;
+      const sc = 0.7 + Math.random() * 0.6;
+      m.scale.set(sc, sc, sc);
+
+      m.visible           = true;
+      m.material.opacity  = 0.95;
+      m._born             = performance.now();
+    }
   }
 
   setWeapon(id) {
@@ -406,24 +448,17 @@ export class Game {
     this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
 
-    // ── Muzzle flash decay ────────────────────────────────────────────────
-    if (this._muzzleTimer > 0) {
-      this._muzzleTimer -= dt * 1000;
-      const t = Math.max(0, this._muzzleTimer / 60);
-      this._muzzleLight.intensity        = 16 * t;
-      this._worldMuzzleLight.intensity   = 10 * t;
-      this._muzzleSprite.material.opacity = t;
-    } else {
-      this._muzzleLight.intensity        = 0;
-      this._worldMuzzleLight.intensity   = 0;
-      this._muzzleSprite.material.opacity = 0;
+    // ── Bullet-hole fade ─────────────────────────────────────────────────
+    // Holes stay solid for a few seconds, then fade out and hide.
+    const HOLD = 5000, FADE = 2500;
+    for (const m of this._impactPool) {
+      if (!m.visible) continue;
+      const age = nowMs - m._born;
+      if (age > HOLD + FADE) { m.visible = false; m.material.opacity = 0; }
+      else if (age > HOLD)   { m.material.opacity = 0.95 * (1 - (age - HOLD) / FADE); }
     }
 
-    // Place world muzzle light at camera (rough approximation)
-    this._worldMuzzleLight.position.copy(this.camera.position);
-
-    // ── Weapon position: ADS sway + kick + mouse sway ────────────────────
-    this._kickZ  *= Math.pow(0.18, dt);   // fast spring back
+    // ── Weapon position: ADS sway + mouse sway (no recoil animation) ─────
     this._swayX += (this._prevMouseDX * -0.0004 - this._swayX) * Math.min(1, dt * 8);
     this._swayY += (this._prevMouseDY * -0.0003 - this._swayY) * Math.min(1, dt * 8);
     this._prevMouseDX = 0;
@@ -435,7 +470,7 @@ export class Game {
     if (wgrp) {
       const adsX  = 0.28 * (1 - this._adsLerp * 0.92);
       const adsY  = -0.22 + this._adsLerp * 0.04;
-      wgrp.position.set(adsX + this._swayX, adsY + this._swayY, -0.45 + this._kickZ);
+      wgrp.position.set(adsX + this._swayX, adsY + this._swayY, -0.45);
       wgrp.visible = !hideVM;
     }
 

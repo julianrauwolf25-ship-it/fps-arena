@@ -167,12 +167,17 @@ export class LocalPlayer {
     const d2 = dx*dx + dy*dy + dz*dz;
     if (d2 > RECONCILE_DST ** 2) {
       // Big jump → snap (e.g. respawn)
-      this.x = s.x; this.y = s.y; this.z = s.z;
+      this.x = s.x; this.y = s.y; this.z = s.z; this.vy = s.vy ?? this.vy;
     } else {
-      // Correct ~25% of the error per snapshot (20 Hz) → invisible to the eye
+      // Correct ~25% of the horizontal error per snapshot (20 Hz) → invisible.
       this.x += dx * 0.25;
-      this.y += dy * 0.25;
       this.z += dz * 0.25;
+      // VERTICAL: only correct while grounded. Mid-air, the server (20 Hz) and
+      // client (60 fps) integrate the jump arc with different timesteps, so Y
+      // briefly diverges; correcting it every snapshot yanks the camera and
+      // looks like heavy lag. On the ground both clamp to the same floor/box
+      // height, so they re-sync naturally with no visible jump.
+      if (this.onGround) this.y += dy * 0.25;
     }
   }
 
