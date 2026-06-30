@@ -75,6 +75,7 @@ export class Game {
     this._initScene();
     this._initCamera();
     this._buildMap();
+    this._buildScenery();
     this._buildViewmodel();
     this._buildImpactPool();
 
@@ -263,6 +264,140 @@ export class Game {
       line.rotation.x = -Math.PI / 2;
       line.position.set(0, 0.01, z);
       this.scene.add(line);
+    }
+  }
+
+  // ── Decorative scenery: sun, clouds, trees, mountains, dust ─────────────────
+
+  _buildScenery() {
+    // Large decorative grass ground for the surroundings. It only extends WEST
+    // of the portal (x ≤ ARENA_HALF) so the parkour zone stays a void of
+    // floating islands. Sits just below the arena floor to avoid z-fighting.
+    const groundTex = grassTex(); groundTex.repeat.set(60, 60);
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(280, 520),
+      new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.95 }),
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.set(ARENA_HALF - 140, -0.05, 0); // right edge at the portal
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+
+    // Sun disc with a soft additive glow, placed in the light's direction
+    const sunDir  = new THREE.Vector3(24, 48, 22).normalize();
+    const sunTex  = canvasTex((ctx, s) => {
+      ctx.clearRect(0, 0, s, s);
+      const g = ctx.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+      g.addColorStop(0.0, 'rgba(255,255,245,1)');
+      g.addColorStop(0.18, 'rgba(255,250,225,0.95)');
+      g.addColorStop(0.4, 'rgba(255,225,150,0.35)');
+      g.addColorStop(1.0, 'rgba(255,200,120,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+    }, 256);
+    const sunMat = new THREE.SpriteMaterial({ map: sunTex, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, fog: false });
+    const sun = new THREE.Sprite(sunMat);
+    sun.position.copy(sunDir.multiplyScalar(360));
+    sun.scale.set(90, 90, 1);
+    this.scene.add(sun);
+
+    // Drifting cloud billboards
+    const cloudTex = canvasTex((ctx, s) => {
+      ctx.clearRect(0, 0, s, s);
+      for (let i = 0; i < 46; i++) {
+        const x = s*0.5 + (Math.random()-0.5)*s*0.72;
+        const y = s*0.5 + (Math.random()-0.5)*s*0.40;
+        const r = s * (0.07 + Math.random()*0.17);
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, 'rgba(255,255,255,0.55)');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+      }
+    }, 256);
+    this._clouds = [];
+    for (let i = 0; i < 9; i++) {
+      const m = new THREE.SpriteMaterial({ map: cloudTex, transparent: true, opacity: 0.78, depthWrite: false, fog: true });
+      const c = new THREE.Sprite(m);
+      const ang = (i / 9) * Math.PI * 2 + Math.random();
+      const rad = 130 + Math.random() * 90;
+      c.position.set(Math.cos(ang) * rad, 48 + Math.random() * 34, Math.sin(ang) * rad);
+      const sc = 50 + Math.random() * 45;
+      c.scale.set(sc, sc * 0.5, 1);
+      c._drift = 0.6 + Math.random() * 0.9;   // units/sec
+      this.scene.add(c);
+      this._clouds.push(c);
+    }
+
+    // Distant mountain ring (hazy silhouette for horizon depth). Placed on the
+    // west arc only, so none float over the parkour void; far enough to read as
+    // a soft fogged backdrop.
+    const mtnMat = new THREE.MeshStandardMaterial({ color: 0x53657a, roughness: 1, flatShading: true });
+    for (let i = 0; i < 14; i++) {
+      const ang = Math.PI * 0.5 + (i / 13) * Math.PI;   // -x hemisphere (west)
+      const rad = 140 + (i % 3) * 16;
+      const h   = 40 + (i % 4) * 18;
+      const m = new THREE.Mesh(new THREE.ConeGeometry(36 + (i % 3) * 8, h, 5), mtnMat);
+      m.position.set(Math.cos(ang) * rad, h/2 - 4, Math.sin(ang) * rad);
+      m.rotation.y = Math.random() * Math.PI;
+      this.scene.add(m);
+    }
+
+    // Low-poly trees on the grass around the arena (west of the portal only,
+    // so none float over the parkour void)
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3d24, roughness: 0.9 });
+    const leafMats = [0x2f6b32, 0x3a7d3e, 0x4f8a3a].map(c =>
+      new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, flatShading: true }));
+    const makeTree = (x, z, scale = 1) => {
+      const g = new THREE.Group();
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.32, 2.4, 6), trunkMat);
+      trunk.position.y = 1.2; trunk.castShadow = true;
+      g.add(trunk);
+      const lm = leafMats[(Math.random() * leafMats.length) | 0];
+      for (let k = 0; k < 3; k++) {
+        const foliage = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5 - k * 0.32, 0), lm);
+        foliage.position.y = 2.6 + k * 1.0;
+        foliage.castShadow = true;
+        g.add(foliage);
+      }
+      g.position.set(x, 0, z);
+      g.scale.setScalar(scale * (0.8 + Math.random() * 0.6));
+      g.rotation.y = Math.random() * Math.PI;
+      this.scene.add(g);
+    };
+    for (let i = 0; i < 40; i++) {
+      const ang = (i / 40) * Math.PI * 2 + Math.random() * 0.3;
+      const rad = 33 + Math.random() * 34;
+      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+      if (x > ARENA_HALF - 2) continue;   // keep clear of the parkour corridor
+      makeTree(x, z, 1.1);
+    }
+
+    // Floating dust motes for atmosphere
+    const N = 160, pos = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      pos[i*3]   = (Math.random() - 0.5) * 120;
+      pos[i*3+1] = Math.random() * 14 + 0.5;
+      pos[i*3+2] = (Math.random() - 0.5) * 90;
+    }
+    const dGeo = new THREE.BufferGeometry();
+    dGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this._dust = new THREE.Points(dGeo, new THREE.PointsMaterial({
+      color: 0xffffff, size: 0.06, transparent: true, opacity: 0.35, depthWrite: false,
+    }));
+    this.scene.add(this._dust);
+  }
+
+  // Animate clouds + dust (called each frame from render)
+  _animateScenery(nowMs) {
+    const t = nowMs / 1000;
+    if (this._clouds) {
+      for (const c of this._clouds) {
+        c.position.x += c._drift * 0.016;
+        if (c.position.x > 230) c.position.x = -230;
+      }
+    }
+    if (this._dust) {
+      this._dust.position.y = Math.sin(t * 0.3) * 0.4;
+      this._dust.rotation.y = t * 0.01;
     }
   }
 
@@ -498,6 +633,9 @@ export class Game {
 
     // Update remote players
     for (const [, rp] of this.remotePlayers) rp.update(this.camera, this.renderer);
+
+    // Animate decorative scenery (clouds drift, dust floats)
+    this._animateScenery(nowMs);
 
     // ── Pass 1: world ────────────────────────────────────────────────────
     this.renderer.clear();
