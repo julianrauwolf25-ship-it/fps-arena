@@ -153,6 +153,7 @@ export class MiniGame {
     this.onReset?.();             // mode restores its arena
     this.scoreboard.reset();
     this.winner = null;
+    this._broadcastState();       // tell clients to clear their lobby overlay
     // Send everyone back to the hub and clear the instance.
     this.manager.returnToHub(this);
   }

@@ -43,6 +43,12 @@ export class Network {
       case 'hit':         this.handlers.onHit?.(msg);                            break;
       case 'playerJoin':  this.handlers.onPlayerJoin?.(msg);                     break;
       case 'playerLeave': this.handlers.onPlayerLeave?.(msg);                    break;
+      // Mini-game framework messages
+      case 'mg_catalogue': this.handlers.onMgCatalogue?.(msg);                   break;
+      case 'mg_state':     this.handlers.onMgState?.(msg);                       break;
+      case 'mg_targets':   this.handlers.onMgTargets?.(msg);                     break;
+      case 'mg_event':     this.handlers.onMgEvent?.(msg);                       break;
+      case 'mg_notice':    this.handlers.onMgNotice?.(msg);                      break;
     }
   }
 
@@ -59,6 +65,9 @@ export class Network {
   sendInput(input, seq) { this.send({ type: 'input', input, seq }); }
 
   sendShoot(yaw, pitch, weapon) { this.send({ type: 'shoot', yaw, pitch, weapon }); }
+
+  mgJoin(mode) { this.send({ type: 'mg_join', mode }); }
+  mgLeave()    { this.send({ type: 'mg_leave' }); }
 
   sendReload() { this.send({ type: 'reload' }); }
 }

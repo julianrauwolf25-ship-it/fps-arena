@@ -22,6 +22,7 @@ export class TargetRush extends MiniGame {
     maxPlayers:  8,
     teams:       false,
     durationSec: 60,
+    implemented: true,   // playable now; scaffolded modes are not yet
   };
 
   onStart() {
@@ -71,10 +72,11 @@ export class TargetRush extends MiniGame {
   }
 
   _relocate(t) {
-    // Random point inside the arena, at chest-to-head height.
-    t.x   = (Math.random() - 0.5) * 44;
-    t.y   = 1.4 + Math.random() * 2.2;
-    t.z   = (Math.random() - 0.5) * 44;
+    // Random point in the mini-games plaza (where players join from), at
+    // chest-to-head height, so you can play right where you queued up.
+    t.x   = -32 - Math.random() * 56;   // x ∈ [-88, -32]
+    t.y   = 1.4 + Math.random() * 2.4;
+    t.z   = (Math.random() - 0.5) * 40;
     t.ttl = TARGET_TTL;
   }
 

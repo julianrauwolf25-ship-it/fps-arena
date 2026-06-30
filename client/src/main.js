@@ -2,6 +2,7 @@ import { Network }     from './Network.js';
 import { LocalPlayer } from './LocalPlayer.js';
 import { Game }        from './Game.js';
 import { HUD }         from './HUD.js';
+import { MiniGames }   from './MiniGames.js';
 import { WEAPONS, ARENA_HALF } from '../../shared/constants.js';
 
 // ── Lobby ─────────────────────────────────────────────────────────────────────
@@ -16,7 +17,7 @@ joinBtn.addEventListener('click', attemptJoin);
 
 // ── Game state ────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('c');
-let game = null, localPlayer = null, hud = null, net = null;
+let game = null, localPlayer = null, hud = null, net = null, miniGames = null;
 let inGame = false, lastInputStr = null;
 let mouseLeftDown = false;   // tracked for full-auto weapons
 let lastShotMs    = 0;       // client-side fire-rate gate
@@ -56,6 +57,13 @@ function attemptJoin() {
 
     onPlayerJoin(msg)  { if (inGame) game.addRemotePlayer(msg.id, msg.name); },
     onPlayerLeave(msg) { if (inGame) game.removeRemotePlayer(msg.id); },
+
+    // Mini-game framework
+    onMgCatalogue(msg) { miniGames?.setCatalogue(msg.modes); },
+    onMgState(msg)     { miniGames?.onState(msg); },
+    onMgTargets(msg)   { miniGames?.onTargets(msg); },
+    onMgEvent(msg)     { miniGames?.onEvent(msg); },
+    onMgNotice(msg)    { miniGames?.onNotice(msg); },
   });
 
   net.connect();
@@ -67,6 +75,7 @@ function startGame(myId, initialSnapshot) {
   game        = new Game(canvas);
   localPlayer = new LocalPlayer();
   hud         = new HUD(myId);
+  miniGames   = new MiniGames(game, net);
 
   if (initialSnapshot) {
     for (const ps of initialSnapshot.players) {
@@ -91,6 +100,13 @@ function startGame(myId, initialSnapshot) {
 
   // Parkour: checkpoint reached
   localPlayer.onCheckpoint = () => { hud.flashMessage('✔ Checkpoint', 'Gespeichert'); };
+
+  // Mini-game lobby: E joins the nearest sign, Esc leaves the current game
+  window.addEventListener('keydown', (e) => {
+    if (!inGame) return;
+    if (e.code === 'KeyE')   miniGames.tryJoin();
+    if (e.code === 'Escape') miniGames.leave();
+  });
 
   // Pointer lock on click
   canvas.addEventListener('click', () => {
@@ -169,6 +185,9 @@ function loop(ts) {
   if (mouseLeftDown && WEAPONS[localPlayer.currentWeapon].auto) tryShoot();
 
   if (!localPlayer.dead) localPlayer.update(dt);
+
+  // Mini-game signs: proximity prompt + label projection
+  miniGames.update(localPlayer);
 
   // Show a one-time hint when crossing from the arena into the parkour zone
   const inParkour = localPlayer.x > ARENA_HALF;

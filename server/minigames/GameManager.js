@@ -38,6 +38,7 @@ export class GameManager {
       minPlayers:  M.meta.minPlayers,
       maxPlayers:  M.meta.maxPlayers,
       teams:       M.meta.teams,
+      implemented: !!M.meta.implemented,
       players:     this.games.get(M.meta.id)?.players.size ?? 0,
       phase:       this.games.get(M.meta.id)?.phase ?? 'lobby',
     }));
@@ -49,6 +50,13 @@ export class GameManager {
     const ModeClass = this.modes[modeId];
     const player    = this.host.getPlayer(playerId);
     if (!ModeClass || !player) return;
+
+    // Scaffolded modes can't be played yet — tell the client so it can show a
+    // "coming soon" notice instead of trapping the player in an empty lobby.
+    if (!ModeClass.meta.implemented) {
+      this.host.broadcastTo([playerId], { type: 'mg_notice', text: `${ModeClass.meta.name} folgt bald!` });
+      return;
+    }
 
     // Already in a game? Pull them out of it first.
     this.leaveGame(playerId);

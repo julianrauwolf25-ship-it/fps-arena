@@ -5,6 +5,7 @@ import {
   WEAPONS, WEAPON_KEYS,
 } from '../shared/constants.js';
 import { ServerPlayer } from './Player.js';
+import { GameManager }  from './minigames/GameManager.js';
 
 // Ray–AABB slab test. Returns t≥0 on hit (max range 120 u), else null.
 function rayAABB(ox, oy, oz, dx, dy, dz, mnX, mxX, mnY, mxY, mnZ, mxZ) {
@@ -30,7 +31,23 @@ export class Room {
     this.players = new Map(); // id → { ws, player, lastInput, lastShot, rateWin, rateCnt }
     this.tick    = 0;
     this.lastMs  = Date.now();
-    this._iv     = setInterval(() => this._tick(), TICK_MS);
+
+    // Mini-game framework. The host adapter is the ONLY bridge between the
+    // framework and this room's netcode (see server/minigames/README.md).
+    this.games = new GameManager({
+      broadcastTo: (ids, msg) => {
+        const data = JSON.stringify(msg);
+        for (const pid of ids) {
+          const ws = this.players.get(pid)?.ws;
+          if (ws && ws.readyState === 1) ws.send(data);
+        }
+      },
+      getPlayer: (id)        => this.players.get(id)?.player ?? null,
+      teleport:  (p, pos)    => { if (p) { p.x = pos.x; p.y = pos.y; p.z = pos.z; p.vx = p.vy = p.vz = 0; } },
+      sendToHub: (p)         => { if (p) { p._eliminated = false; p.spawn(); } },
+    });
+
+    this._iv = setInterval(() => this._tick(), TICK_MS);
   }
 
   destroy() { clearInterval(this._iv); }
@@ -41,6 +58,7 @@ export class Room {
     const player = new ServerPlayer(id, name);
     this.players.set(id, { ws, player, lastInput: {}, lastShot: 0, rateWin: Date.now(), rateCnt: 0 });
     this._send(ws, { type: 'init', id, snapshot: this._snapshot() });
+    this._send(ws, { type: 'mg_catalogue', modes: this.games.catalogue() });
     this.broadcast({ type: 'playerJoin', id, name });
     console.log(`[+] ${name} (${id}) — ${this.players.size} players`);
   }
@@ -48,6 +66,7 @@ export class Room {
   removePlayer(id) {
     const e = this.players.get(id);
     if (!e) return;
+    this.games.leaveGame(id);          // drop them from any mini-game first
     this.players.delete(id);
     this.broadcast({ type: 'playerLeave', id });
     console.log(`[-] ${e.player.name} (${id}) — ${this.players.size} players`);
@@ -64,9 +83,11 @@ export class Room {
     if (now - e.rateWin > 1000) { e.rateWin = now; e.rateCnt = 0; }
     if (++e.rateCnt > MAX_MSG_PER_SECOND) return;
 
-    if (msg.type === 'input')  this._applyInput(e, msg);
-    if (msg.type === 'shoot')  this._shoot(id, e, msg);
-    if (msg.type === 'reload') this._reload(e);
+    if (msg.type === 'input')    this._applyInput(e, msg);
+    if (msg.type === 'shoot')    this._shoot(id, e, msg);
+    if (msg.type === 'reload')   this._reload(e);
+    if (msg.type === 'mg_join')  this.games.joinQueue(id, String(msg.mode || ''));
+    if (msg.type === 'mg_leave') this.games.leaveGame(id);
   }
 
   // ── Input ─────────────────────────────────────────────────────────────────
@@ -121,6 +142,19 @@ export class Room {
     const yaw   = typeof msg.yaw   === 'number' ? msg.yaw   : player.yaw;
     const pitch = typeof msg.pitch === 'number'
       ? Math.max(-Math.PI/2, Math.min(Math.PI/2, msg.pitch)) : player.pitch;
+
+    // Forward the central aim ray into the player's active mini-game (if any),
+    // e.g. Target Rush scores hits on its own target entities.
+    if (this.games.inGame(id)) {
+      this.games.onShoot(id, {
+        origin: { x: eye.x, y: eye.y, z: eye.z },
+        dir: {
+          x: -Math.sin(yaw) * Math.cos(pitch),
+          y:  Math.sin(pitch),
+          z: -Math.cos(yaw) * Math.cos(pitch),
+        },
+      });
+    }
 
     // Fire all pellets (shotgun = multiple, others = 1)
     for (let p = 0; p < weap.pellets; p++) {
@@ -203,6 +237,7 @@ export class Room {
     this.lastMs = now;
     this.tick++;
     for (const [, e] of this.players) e.player.update(dt, e.lastInput);
+    this.games.update(dt);            // drive all active mini-game instances
     this._broadcastSnapshot();
   }
 
