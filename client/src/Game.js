@@ -489,8 +489,9 @@ export class Game {
     this.camera.fov = FOV_HIP + (weap.adsFov - FOV_HIP) * this._adsLerp;
     this.camera.updateProjectionMatrix();
 
-    // Camera placement (interpolated between physics steps for smooth motion)
-    const eye = localPlayer.eyePosition(alpha);
+    // Camera placement (interpolated between physics steps + smoothed server
+    // corrections for jitter-free motion)
+    const eye = localPlayer.eyePosition(alpha, dt);
     this.camera.position.set(eye.x, eye.y, eye.z);
     this.camera.rotation.y = localPlayer.yaw;
     this.camera.rotation.x = localPlayer.pitch;

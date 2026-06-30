@@ -21,12 +21,11 @@ export class LocalPlayer {
     // while physics runs at a fixed timestep). Kept in sync on teleports.
     this._prevX = 0; this._prevY = 0; this._prevZ = 0;
 
-    // Head-bob + landing-squish (client-only, cosmetic)
-    this._bobPhase   = 0;   // oscillator phase
-    this._bobAmt     = 0;   // current bob magnitude
-    this._squish     = 0;   // camera dip on landing
-    this._prevVy     = 0;
-    this._prevGround = false;
+    // Visual error offset for SMOOTH server reconciliation. A correction is
+    // applied to the prediction but visually cancelled here, then decayed to
+    // zero over a fraction of a second — so corrections resolve as a smooth
+    // glide instead of a per-snapshot pop (the cause of tight-curve jitter).
+    this._errX = 0; this._errY = 0; this._errZ = 0;
 
     // Weapon
     this.currentWeapon = 'pistol';
@@ -124,9 +123,6 @@ export class LocalPlayer {
     if (this.keys.jump && this.onGround) { this.vy = PLAYER_JUMP; this.onGround = false; }
     this.vy += GRAVITY * dt;
 
-    this._prevVy     = this.vy;
-    this._prevGround = this.onGround;
-
     // Collide with map geometry (shared logic)
     const c = moveAndCollide(this.x, this.y, this.z, this.vx, this.vy, this.vz, dt, this.onGround);
     this.x = c.px; this.y = c.py; this.z = c.pz;
@@ -142,27 +138,12 @@ export class LocalPlayer {
     this.vx = pk.vx; this.vy = pk.vy; this.vz = pk.vz;
     this.parkourCP = pk.cp;
     if (pk.newCheckpoint) this.onCheckpoint?.();
-    // A void-respawn is a teleport — kill interpolation so the camera doesn't
-    // slingshot across the gap for one frame.
-    if (pk.respawned) { this._prevX = this.x; this._prevY = this.y; this._prevZ = this.z; }
-
-    // ── Head bob ──────────────────────────────────────────────────────────
-    const moving = this.onGround && (mx !== 0 || mz !== 0);
-    const bobSpeed = this.keys.sprint ? 11 : 7.5;
-    if (moving) {
-      this._bobPhase += dt * bobSpeed;
-      this._bobAmt    = Math.min(this._bobAmt + dt * 6, 1);
-    } else {
-      this._bobAmt = Math.max(0, this._bobAmt - dt * 8);
+    // A void-respawn is a teleport — kill interpolation + error offset so the
+    // camera doesn't slingshot across the gap.
+    if (pk.respawned) {
+      this._prevX = this.x; this._prevY = this.y; this._prevZ = this.z;
+      this._errX = 0; this._errY = 0; this._errZ = 0;
     }
-
-    // ── Landing squish ─────────────────────────────────────────────────────
-    const justLanded = !this._prevGround && this.onGround;
-    if (justLanded) {
-      const impact = Math.abs(this._prevVy);
-      this._squish = Math.min(0.18, impact * 0.007);
-    }
-    this._squish *= Math.pow(0.04, dt); // quick spring recovery
 
     this._inputSeq++;
     this._history.push({ seq: this._inputSeq, x: this.x, y: this.y, z: this.z });
@@ -178,27 +159,33 @@ export class LocalPlayer {
     this.kills     = s.kills;
     this.deaths    = s.deaths;
 
-    // Smooth reconciliation: instead of a hard snap (which causes visible
-    // stutter/rubber-banding), gently converge toward the authoritative
-    // position. Small client/server drift is corrected over a few snapshots;
-    // only a large divergence (respawn / teleport) snaps instantly.
     const dx = s.x - this.x, dy = s.y - this.y, dz = s.z - this.z;
     const d2 = dx*dx + dy*dy + dz*dz;
+
     if (d2 > RECONCILE_DST ** 2) {
-      // Big jump → snap (e.g. respawn). Sync interpolation to avoid a slingshot.
+      // Big divergence → snap instantly (respawn / teleport). Reset smoothing.
       this.x = s.x; this.y = s.y; this.z = s.z; this.vy = s.vy ?? this.vy;
       this._prevX = this.x; this._prevY = this.y; this._prevZ = this.z;
-    } else {
-      // Deadzone: ignore sub-centimetre drift so the view never micro-jitters.
-      const DEAD = 0.04;
-      if (Math.abs(dx) > DEAD) this.x += dx * 0.2;
-      if (Math.abs(dz) > DEAD) this.z += dz * 0.2;
-      // VERTICAL: only correct while grounded. Mid-air, the server (20 Hz) and
-      // client (fixed step) integrate the jump arc slightly differently, so Y
-      // briefly diverges; correcting it every snapshot yanks the camera. On the
-      // ground both clamp to the same floor/box height, so they re-sync cleanly.
-      if (this.onGround && Math.abs(dy) > DEAD) this.y += dy * 0.2;
+      this._errX = 0; this._errY = 0; this._errZ = 0;
+      return;
     }
+
+    // Smooth correction: move the prediction toward the server, but record the
+    // same amount as a *visual* error offset (also shifting prev so the current
+    // interpolation segment stays continuous). The offset then decays to zero
+    // in eyePosition() over ~120 ms, so the camera glides to the corrected spot
+    // with no pop — even when corrections arrive every snapshot in tight spots.
+    const correct = (axis, d, allow) => {
+      if (!allow || Math.abs(d) < 0.02) return;
+      const c = d * 0.5;
+      this[axis]        += c;
+      this['_prev' + axis.toUpperCase()] += c;
+      this['_err' + axis.toUpperCase()]  -= c;
+    };
+    correct('x', dx, true);
+    correct('z', dz, true);
+    // Vertical only while grounded (mid-air jump arcs diverge harmlessly).
+    correct('y', dy, this.onGround);
   }
 
   // Snapshot current position before a fixed physics step (for interpolation).
@@ -218,16 +205,20 @@ export class LocalPlayer {
     };
   }
 
-  // Eye position, interpolated between the previous and current physics step by
-  // `alpha` (0..1) for buttery-smooth motion regardless of framerate. No walking
-  // head-bob; only the brief landing-squish dip remains.
-  eyePosition(alpha = 1) {
-    const ix = this._prevX + (this.x - this._prevX) * alpha;
-    const iy = this._prevY + (this.y - this._prevY) * alpha;
-    const iz = this._prevZ + (this.z - this._prevZ) * alpha;
+  // Eye position: interpolate between the previous and current physics step by
+  // `alpha` (sub-step smoothness), then add the decaying reconciliation error
+  // offset (server-correction smoothness). `frameDt` decays the offset.
+  eyePosition(alpha = 1, frameDt = 0) {
+    // Error offset decays toward zero with a ~120 ms time constant
+    const decay = Math.exp(-frameDt / 0.12);
+    this._errX *= decay; this._errY *= decay; this._errZ *= decay;
+
+    const ix = this._prevX + (this.x - this._prevX) * alpha + this._errX;
+    const iy = this._prevY + (this.y - this._prevY) * alpha + this._errY;
+    const iz = this._prevZ + (this.z - this._prevZ) * alpha + this._errZ;
     return {
       x: ix,
-      y: iy + PLAYER_EYE_OFFSET - this._squish,
+      y: iy + PLAYER_EYE_OFFSET,
       z: iz,
     };
   }
