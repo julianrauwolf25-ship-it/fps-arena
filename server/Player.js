@@ -4,8 +4,9 @@ import {
   MAX_HEALTH, RESPAWN_TIME, SPAWN_POINTS, WORLD_BOUNDS,
   WEAPONS, WEAPON_KEYS,
 } from '../shared/constants.js';
-import { moveAndCollide } from '../shared/collision.js';
-import { applyParkour }   from '../shared/parkour.js';
+import { moveAndCollide }   from '../shared/collision.js';
+import { applyParkour }     from '../shared/parkour.js';
+import { jumpPadVelocity }  from '../shared/minigames.js';
 
 export class ServerPlayer {
   constructor(id, name) {
@@ -100,6 +101,10 @@ export class ServerPlayer {
     this.x = pk.x; this.y = pk.y; this.z = pk.z;
     this.vx = pk.vx; this.vy = pk.vy; this.vz = pk.vz;
     this.parkourCP = pk.cp;
+
+    // Minigame bounce pads
+    const padVy = jumpPadVelocity(this);
+    if (padVy !== this.vy) { this.vy = padVy; this.onGround = false; }
 
     this.yaw   = yaw;
     this.pitch = typeof input.pitch === 'number' ? input.pitch : 0;

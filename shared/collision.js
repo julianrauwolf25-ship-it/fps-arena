@@ -1,17 +1,19 @@
 // Shared AABB collision — imported by both server (Node) and client (Vite).
 // Resolves player cylinder (approximated as AABB) against static MAP_BOXES.
 
-import { MAP_BOXES, PLAYER_RADIUS, PLAYER_HEIGHT, ARENA_HALF } from './constants.js';
+import { MAP_BOXES, PLAYER_RADIUS, PLAYER_HEIGHT, ARENA_HALF, MINIGAME_FLOOR } from './constants.js';
 
 const PR = PLAYER_RADIUS;
 const PH = PLAYER_HEIGHT;
 
-// The solid ground plane (y=0) only exists inside the arena footprint. Outside
-// it (the parkour zone east of the arena) there is no floor — you fall into the
-// void and respawn at a checkpoint. Players stand on parkour blocks via box
-// collision, not this plane.
+// The solid ground plane (y=0) exists inside the arena footprint AND the
+// minigame plaza (west of the arena). Outside those — the parkour zone east of
+// the arena — there is no floor: you fall into the void and respawn at a
+// checkpoint. Players stand on parkour blocks via box collision, not this plane.
 function onArenaFloor(px, pz) {
-  return px <= ARENA_HALF && px >= -ARENA_HALF && pz <= ARENA_HALF && pz >= -ARENA_HALF;
+  if (px <= ARENA_HALF && px >= -ARENA_HALF && pz <= ARENA_HALF && pz >= -ARENA_HALF) return true;
+  const m = MINIGAME_FLOOR;
+  return px >= m.minX && px <= m.maxX && pz >= m.minZ && pz <= m.maxZ;
 }
 
 /**

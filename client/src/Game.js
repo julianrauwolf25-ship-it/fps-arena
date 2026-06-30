@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { MAP_BOXES, ARENA_HALF, VOID_Y, WEAPONS, WEAPON_KEYS } from '../../shared/constants.js';
+import { MAP_BOXES, ARENA_HALF, VOID_Y, JUMP_PADS, WEAPONS, WEAPON_KEYS } from '../../shared/constants.js';
 import { RemotePlayer } from './RemotePlayer.js';
 
 const FOV_HIP = 90;
@@ -213,6 +213,16 @@ export class Game {
     const cpMat   = new THREE.MeshStandardMaterial({ color: 0xffcc33, emissive: 0x664400, emissiveIntensity: 0.9, roughness: 0.4 });
     const wallMat = stdMat(wt, 0.88);
 
+    // Concentric shooting-range target texture (red/white rings, yellow bull)
+    const targetTex = canvasTex((ctx, s) => {
+      const rings = [['#d63a2f', 0.5], ['#ffffff', 0.4], ['#d63a2f', 0.3], ['#ffffff', 0.2], ['#f4c430', 0.1]];
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, s, s);
+      for (const [col, rad] of rings) {
+        ctx.fillStyle = col; ctx.beginPath(); ctx.arc(s/2, s/2, s * rad, 0, 7); ctx.fill();
+      }
+    }, 256);
+    const targetMat = new THREE.MeshStandardMaterial({ map: targetTex, roughness: 0.7 });
+
     // Build every collidable box, choosing a look from its `kind`
     for (const b of MAP_BOXES) {
       let mat;
@@ -221,6 +231,7 @@ export class Game {
         case 'checkpoint':   mat = cpMat;   break;
         case 'parkour':      mat = b.z < 0 ? hardMat : easyMat; break;
         case 'parkourStart': mat = stdMat(ct, 0.85); break;
+        case 'target':       mat = targetMat; break;
         default: {           // cover
           const isLarge = b.w > 4 || b.d > 4;
           mat = isLarge ? stdMat(ct, 0.85) : stdMat(mt, 0.55, 0.35);
@@ -384,6 +395,71 @@ export class Game {
       color: 0xffffff, size: 0.06, transparent: true, opacity: 0.35, depthWrite: false,
     }));
     this.scene.add(this._dust);
+
+    // ── Minigame bounce pads (glowing discs + a light) ─────────────────────
+    this._pads = [];
+    for (const p of JUMP_PADS) {
+      const disc = new THREE.Mesh(
+        new THREE.CylinderGeometry(p.r, p.r * 1.05, 0.25, 24),
+        new THREE.MeshStandardMaterial({ color: 0x33e0ff, emissive: 0x1577aa, emissiveIntensity: 1.1, roughness: 0.35, metalness: 0.4 }),
+      );
+      disc.position.set(p.x, 0.12, p.z);
+      disc.receiveShadow = true;
+      this.scene.add(disc);
+      // Ring marker
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(p.r * 0.96, 0.07, 8, 28),
+        new THREE.MeshStandardMaterial({ color: 0x9af0ff, emissive: 0x66ddff, emissiveIntensity: 1.4 }),
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.set(p.x, 0.26, p.z);
+      this.scene.add(ring);
+      const pl = new THREE.PointLight(0x33ddff, 6, 9, 2);
+      pl.position.set(p.x, 1.2, p.z);
+      this.scene.add(pl);
+      this._pads.push(ring);
+    }
+
+    // ── Gate signs above the two portals ───────────────────────────────────
+    // West wall → MINI GAMES, East wall → PARKOUR
+    this._buildGateSign('MINI GAMES', -ARENA_HALF + 0.3, 0, +1, 0xff7733);
+    this._buildGateSign('PARKOUR',     ARENA_HALF - 0.3, 0, -1, 0x33ddaa);
+  }
+
+  // A glowing text banner floating above a wall gate. `face` = +1 → readable
+  // from the −x side, −1 → from the +x side.
+  _buildGateSign(text, x, z, face, color) {
+    const cw = 1024, ch = 256;
+    const cv = Object.assign(document.createElement('canvas'), { width: cw, height: ch });
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cw, ch);
+    // rounded translucent panel
+    ctx.fillStyle = 'rgba(8,10,18,0.72)';
+    const r = 40;
+    ctx.beginPath();
+    ctx.moveTo(r, 10); ctx.arcTo(cw-10, 10, cw-10, ch-10, r);
+    ctx.arcTo(cw-10, ch-10, 10, ch-10, r); ctx.arcTo(10, ch-10, 10, 10, r);
+    ctx.arcTo(10, 10, cw-10, 10, r); ctx.closePath(); ctx.fill();
+    // text
+    ctx.font = 'bold 150px Arial, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 10; ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.strokeText(text, cw/2, ch/2 + 6);
+    ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
+    ctx.fillText(text, cw/2, ch/2 + 6);
+
+    const tex = new THREE.CanvasTexture(cv);
+    tex.anisotropy = 4;
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, depthWrite: false, fog: false });
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(13, 3.25), mat);
+    sign.position.set(x, 6.4, z);
+    sign.rotation.y = face > 0 ? Math.PI / 2 : -Math.PI / 2;
+    this.scene.add(sign);
+
+    // soft backlight so the sign reads against the sky
+    const bl = new THREE.PointLight(color, 5, 14, 2);
+    bl.position.set(x + face * 1.5, 6, z);
+    this.scene.add(bl);
   }
 
   // Animate clouds + dust (called each frame from render)
@@ -398,6 +474,15 @@ export class Game {
     if (this._dust) {
       this._dust.position.y = Math.sin(t * 0.3) * 0.4;
       this._dust.rotation.y = t * 0.01;
+    }
+    if (this._pads) {
+      for (let i = 0; i < this._pads.length; i++) {
+        const ring = this._pads[i];
+        const ph = t * 3 + i;
+        ring.position.y = 0.26 + Math.sin(ph) * 0.1;
+        const sc = 1 + Math.sin(ph) * 0.08;
+        ring.scale.set(sc, sc, 1);
+      }
     }
   }
 

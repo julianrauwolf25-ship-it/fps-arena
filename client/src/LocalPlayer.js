@@ -2,8 +2,9 @@ import {
   PLAYER_SPEED, PLAYER_SPRINT, PLAYER_ADS_MULT, PLAYER_JUMP, GRAVITY,
   PLAYER_EYE_OFFSET, WORLD_BOUNDS, WEAPONS, WEAPON_KEYS,
 } from '../../shared/constants.js';
-import { moveAndCollide } from '../../shared/collision.js';
-import { applyParkour }   from '../../shared/parkour.js';
+import { moveAndCollide }   from '../../shared/collision.js';
+import { applyParkour }     from '../../shared/parkour.js';
+import { jumpPadVelocity }  from '../../shared/minigames.js';
 
 const MOUSE_SENS    = 0.0018;
 const RECONCILE_DST = 5.0;  // beyond this, snap instantly (respawn/teleport)
@@ -137,6 +138,10 @@ export class LocalPlayer {
     // A void-respawn is a teleport — clear the error offset so the camera
     // doesn't glide across the gap.
     if (pk.respawned) { this._errX = 0; this._errY = 0; this._errZ = 0; }
+
+    // Minigame bounce pads
+    const padVy = jumpPadVelocity(this);
+    if (padVy !== this.vy) { this.vy = padVy; this.onGround = false; }
 
     this._inputSeq++;
     this._history.push({ seq: this._inputSeq, x: this.x, y: this.y, z: this.z });

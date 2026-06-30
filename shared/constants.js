@@ -96,10 +96,22 @@ export const WEAPON_KEYS = ['pistol', 'rifle', 'shotgun', 'sniper'];
 
 // ── World bounds (loose safety net; real containment is the wall boxes) ───────
 // Expanded eastward (+x) to include the parkour zone beyond the arena's east wall.
-export const WORLD_BOUNDS = { minX: -29, maxX: 120, minZ: -29, maxZ: 29 };
+export const WORLD_BOUNDS = { minX: -98, maxX: 120, minZ: -29, maxZ: 29 };
 
 // Fall below this Y in the parkour zone → respawn at the last checkpoint.
 export const VOID_Y = -8;
+
+// Minigame plaza: a grounded zone WEST of the arena (through the west-wall gate).
+// Has a solid floor (unlike the parkour void) so jump pads & a shooting range fit.
+export const MINIGAME_FLOOR = { minX: -97, maxX: -ARENA_HALF, minZ: -33, maxZ: 33 };
+
+// Bounce pads { x, z, top, r (radius), power (launch velocity) }
+export const JUMP_PADS = [
+  { x: -44, z:  0,  top: 0, r: 1.7, power: 15 },
+  { x: -54, z:  7,  top: 0, r: 1.7, power: 18 },
+  { x: -54, z: -7,  top: 0, r: 1.7, power: 18 },
+  { x: -66, z:  0,  top: 0, r: 1.7, power: 22 },
+];
 
 // ── Arena cover boxes { x, y, z = centre, w, h, d = full size, kind } ─────────
 const ARENA_COVER = [
@@ -127,10 +139,20 @@ const WALL_H = 8, WT = 1.0;  // wall height & thickness (thick enough to avoid t
 const ARENA_WALLS = [
   { x: 0,           y: WALL_H/2, z: -ARENA_HALF, w: ARENA_HALF*2 + 1, h: WALL_H, d: WT },              // north
   { x: 0,           y: WALL_H/2, z:  ARENA_HALF, w: ARENA_HALF*2 + 1, h: WALL_H, d: WT },              // south
-  { x: -ARENA_HALF, y: WALL_H/2, z: 0,           w: WT, h: WALL_H, d: ARENA_HALF*2 + 1 },              // west
-  { x:  ARENA_HALF, y: WALL_H/2, z: -15.5,       w: WT, h: WALL_H, d: 25 },                            // east (north of gap)
+  { x:  ARENA_HALF, y: WALL_H/2, z: -15.5,       w: WT, h: WALL_H, d: 25 },                            // east (north of gap) → PARKOUR
   { x:  ARENA_HALF, y: WALL_H/2, z:  15.5,       w: WT, h: WALL_H, d: 25 },                            // east (south of gap)
+  { x: -ARENA_HALF, y: WALL_H/2, z: -15.5,       w: WT, h: WALL_H, d: 25 },                            // west (north of gap) → MINI GAMES
+  { x: -ARENA_HALF, y: WALL_H/2, z:  15.5,       w: WT, h: WALL_H, d: 25 },                            // west (south of gap)
 ].map(b => ({ ...b, kind: 'wall' }));
+
+// ── Minigame props (shooting-range targets — collidable so bullets leave holes) ─
+const MINI_TARGETS = [
+  { x: -86, y: 2.2, z: -8, w: 0.4, h: 2.4, d: 2.4, kind: 'target' },
+  { x: -86, y: 3.0, z: -3, w: 0.4, h: 2.0, d: 2.0, kind: 'target' },
+  { x: -86, y: 2.4, z:  2, w: 0.4, h: 2.4, d: 2.4, kind: 'target' },
+  { x: -86, y: 3.2, z:  7, w: 0.4, h: 1.8, d: 1.8, kind: 'target' },
+  { x: -90, y: 1.8, z:  0, w: 0.4, h: 1.6, d: 1.6, kind: 'target' },
+];
 
 // ── Parkour zone (east of the arena, beyond the portal gap) ───────────────────
 // Helper: a chunky block whose TOP surface sits at `top`. cp=true → checkpoint.
@@ -193,4 +215,5 @@ export const MAP_BOXES = [
   PARKOUR_START_BOX,
   ...PARKOUR_EASY,
   ...PARKOUR_HARD,
+  ...MINI_TARGETS,
 ];
