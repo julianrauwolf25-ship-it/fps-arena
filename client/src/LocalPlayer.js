@@ -17,10 +17,6 @@ export class LocalPlayer {
     this.pitch     = 0;
     this.ads       = false;
 
-    // Previous physics-step position, for render interpolation (smooth motion
-    // while physics runs at a fixed timestep). Kept in sync on teleports.
-    this._prevX = 0; this._prevY = 0; this._prevZ = 0;
-
     // Visual error offset for SMOOTH server reconciliation. A correction is
     // applied to the prediction but visually cancelled here, then decayed to
     // zero over a fraction of a second — so corrections resolve as a smooth
@@ -138,12 +134,9 @@ export class LocalPlayer {
     this.vx = pk.vx; this.vy = pk.vy; this.vz = pk.vz;
     this.parkourCP = pk.cp;
     if (pk.newCheckpoint) this.onCheckpoint?.();
-    // A void-respawn is a teleport — kill interpolation + error offset so the
-    // camera doesn't slingshot across the gap.
-    if (pk.respawned) {
-      this._prevX = this.x; this._prevY = this.y; this._prevZ = this.z;
-      this._errX = 0; this._errY = 0; this._errZ = 0;
-    }
+    // A void-respawn is a teleport — clear the error offset so the camera
+    // doesn't glide across the gap.
+    if (pk.respawned) { this._errX = 0; this._errY = 0; this._errZ = 0; }
 
     this._inputSeq++;
     this._history.push({ seq: this._inputSeq, x: this.x, y: this.y, z: this.z });
@@ -165,32 +158,26 @@ export class LocalPlayer {
     if (d2 > RECONCILE_DST ** 2) {
       // Big divergence → snap instantly (respawn / teleport). Reset smoothing.
       this.x = s.x; this.y = s.y; this.z = s.z; this.vy = s.vy ?? this.vy;
-      this._prevX = this.x; this._prevY = this.y; this._prevZ = this.z;
       this._errX = 0; this._errY = 0; this._errZ = 0;
       return;
     }
 
     // Smooth correction: move the prediction toward the server, but record the
-    // same amount as a *visual* error offset (also shifting prev so the current
-    // interpolation segment stays continuous). The offset then decays to zero
-    // in eyePosition() over ~120 ms, so the camera glides to the corrected spot
-    // with no pop — even when corrections arrive every snapshot in tight spots.
+    // same amount as a *visual* error offset. The rendered position is
+    // (prediction + offset), so it's unchanged at the instant of correction;
+    // the offset then decays to zero in eyePosition() over ~120 ms, so the
+    // camera glides to the corrected spot with no pop — even when corrections
+    // arrive every snapshot in tight corners.
     const correct = (axis, d, allow) => {
       if (!allow || Math.abs(d) < 0.02) return;
       const c = d * 0.5;
-      this[axis]        += c;
-      this['_prev' + axis.toUpperCase()] += c;
+      this[axis]                         += c;
       this['_err' + axis.toUpperCase()]  -= c;
     };
     correct('x', dx, true);
     correct('z', dz, true);
     // Vertical only while grounded (mid-air jump arcs diverge harmlessly).
     correct('y', dy, this.onGround);
-  }
-
-  // Snapshot current position before a fixed physics step (for interpolation).
-  savePrev() {
-    this._prevX = this.x; this._prevY = this.y; this._prevZ = this.z;
   }
 
   currentInput() {
@@ -205,21 +192,17 @@ export class LocalPlayer {
     };
   }
 
-  // Eye position: interpolate between the previous and current physics step by
-  // `alpha` (sub-step smoothness), then add the decaying reconciliation error
-  // offset (server-correction smoothness). `frameDt` decays the offset.
-  eyePosition(alpha = 1, frameDt = 0) {
-    // Error offset decays toward zero with a ~120 ms time constant
-    const decay = Math.exp(-frameDt / 0.12);
+  // Eye position: the live predicted position plus the decaying reconciliation
+  // error offset (server-correction smoothness). `frameDt` decays the offset.
+  // Physics runs at the render rate, so the camera tracks it 1:1 — no
+  // interpolation, no physics/display rate-mismatch beat.
+  eyePosition(frameDt = 0) {
+    const decay = Math.exp(-frameDt / 0.12); // ~120 ms time constant
     this._errX *= decay; this._errY *= decay; this._errZ *= decay;
-
-    const ix = this._prevX + (this.x - this._prevX) * alpha + this._errX;
-    const iy = this._prevY + (this.y - this._prevY) * alpha + this._errY;
-    const iz = this._prevZ + (this.z - this._prevZ) * alpha + this._errZ;
     return {
-      x: ix,
-      y: iy + PLAYER_EYE_OFFSET,
-      z: iz,
+      x: this.x + this._errX,
+      y: this.y + this._errY + PLAYER_EYE_OFFSET,
+      z: this.z + this._errZ,
     };
   }
 

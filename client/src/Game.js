@@ -480,7 +480,7 @@ export class Game {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  render(localPlayer, dt, alpha = 1) {
+  render(localPlayer, dt) {
     const nowMs  = performance.now();
     const weap   = WEAPONS[localPlayer.currentWeapon];
 
@@ -489,9 +489,8 @@ export class Game {
     this.camera.fov = FOV_HIP + (weap.adsFov - FOV_HIP) * this._adsLerp;
     this.camera.updateProjectionMatrix();
 
-    // Camera placement (interpolated between physics steps + smoothed server
-    // corrections for jitter-free motion)
-    const eye = localPlayer.eyePosition(alpha, dt);
+    // Camera placement (live predicted position + smoothed server corrections)
+    const eye = localPlayer.eyePosition(dt);
     this.camera.position.set(eye.x, eye.y, eye.z);
     this.camera.rotation.y = localPlayer.yaw;
     this.camera.rotation.x = localPlayer.pitch;

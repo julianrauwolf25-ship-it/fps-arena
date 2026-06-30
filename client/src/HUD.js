@@ -27,6 +27,7 @@ export class HUD {
     this._toastMain  = this._toast.querySelector('.toast-main');
     this._toastSub   = this._toast.querySelector('.toast-sub');
     this._toastTimer = null;
+    this._fps        = document.getElementById('fps');
 
     this._hmTimer       = null;
     this._vignetteTimer = null;
@@ -45,6 +46,8 @@ export class HUD {
   }
 
   show() { document.getElementById('hud').style.display = 'block'; this.setWeapon('pistol'); }
+
+  setFPS(fps) { this._fps.textContent = fps + ' FPS'; }
 
   setHealth(hp) {
     const pct = Math.max(0, Math.min(100, hp));

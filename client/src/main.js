@@ -139,34 +139,36 @@ function tryShoot() {
 }
 
 // ── Game loop ─────────────────────────────────────────────────────────────────
-// Fixed-timestep physics + render interpolation = smooth, deterministic motion
-// that stays in sync with the 20 Hz authoritative server.
-const FIXED_DT = 1 / 60;   // physics step (seconds)
-let lastTime   = 0;
-let accumulator = 0;
+// Physics runs at the render rate (variable dt) and the camera draws it
+// directly — so there is no physics/display rate-mismatch beat. A drift-
+// compensated limiter locks the loop to a clean 120 FPS.
+const TARGET_FPS = 120;
+const FRAME_MS   = 1000 / TARGET_FPS;
+let   lastTime   = 0;   // timestamp of the last *rendered* frame
+let   nextDue    = 0;   // scheduled time of the next frame (for the limiter)
+
+// FPS counter (averaged over ~0.5 s)
+let fpsTimer = 0, fpsFrames = 0;
 
 function loop(ts) {
   if (!inGame) return;
   requestAnimationFrame(loop);
 
-  let frameDt = (ts - lastTime) / 1000;
+  // ── 120 FPS limiter ───────────────────────────────────────────────────────
+  if (nextDue === 0) { nextDue = ts; lastTime = ts; }
+  if (ts < nextDue - 1) return;            // too early → wait for the next tick
+  nextDue += FRAME_MS;
+  if (ts > nextDue) nextDue = ts + FRAME_MS; // fell behind → resync, no catch-up
+
+  let dt = (ts - lastTime) / 1000;
   lastTime = ts;
-  if (!isFinite(frameDt) || frameDt < 0) frameDt = 0;
-  frameDt = Math.min(frameDt, 0.1);
+  if (!isFinite(dt) || dt <= 0) dt = 1 / TARGET_FPS;
+  dt = Math.min(dt, 0.1);                   // clamp after a stall/tab-out
 
   // Full-auto weapons keep firing while the left button is held
   if (mouseLeftDown && WEAPONS[localPlayer.currentWeapon].auto) tryShoot();
 
-  // Step physics in fixed increments; never spiral if the tab was backgrounded
-  accumulator = Math.min(accumulator + frameDt, 0.25);
-  while (accumulator >= FIXED_DT) {
-    if (!localPlayer.dead) {
-      localPlayer.savePrev();
-      localPlayer.update(FIXED_DT);
-    }
-    accumulator -= FIXED_DT;
-  }
-  const alpha = accumulator / FIXED_DT; // interpolation factor for this frame
+  if (!localPlayer.dead) localPlayer.update(dt);
 
   // Show a one-time hint when crossing from the arena into the parkour zone
   const inParkour = localPlayer.x > ARENA_HALF;
@@ -175,5 +177,9 @@ function loop(ts) {
   }
   wasInParkour = inParkour;
 
-  game.render(localPlayer, frameDt, alpha);
+  game.render(localPlayer, dt);
+
+  // Update the on-screen FPS readout
+  fpsTimer += dt; fpsFrames++;
+  if (fpsTimer >= 0.5) { hud.setFPS(Math.round(fpsFrames / fpsTimer)); fpsTimer = 0; fpsFrames = 0; }
 }

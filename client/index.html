@@ -106,6 +106,9 @@
     /* Name labels */
     .name-label { position: fixed; transform: translateX(-50%); font-size: .67rem; color: #fff; background: rgba(0,0,0,.55); padding: 1px 7px; border-radius: 3px; pointer-events: none; white-space: nowrap; z-index: 20; }
 
+    /* FPS counter */
+    #fps { position: fixed; top: 12px; left: 14px; font-size: .8rem; font-weight: 700; color: #7CFC00; text-shadow: 0 1px 3px #000; font-variant-numeric: tabular-nums; z-index: 46; }
+
     /* Toast (checkpoint / parkour messages) */
     #toast { position: fixed; top: 22%; left: 50%; transform: translate(-50%, -10px); z-index: 45; pointer-events: none; opacity: 0; transition: opacity .25s, transform .25s; text-align: center; }
     #toast.show { opacity: 1; transform: translate(-50%, 0); }
@@ -154,6 +157,7 @@
     <div class="weap-slot"        data-weapon="sniper"> <span class="slot-key">4</span><span class="slot-name">Sniper</span></div>
   </div>
 
+  <div id="fps">– FPS</div>
   <div id="killfeed"></div>
   <div id="hitmarker"></div>
   <div id="lock-prompt">Click to capture mouse &nbsp;·&nbsp; WASD move &nbsp;·&nbsp; RMB aim &nbsp;·&nbsp; LMB shoot &nbsp;·&nbsp; 1–4 weapons &nbsp;·&nbsp; R reload &nbsp;·&nbsp; Tab scores</div>
