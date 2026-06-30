@@ -96,7 +96,7 @@ export const WEAPON_KEYS = ['pistol', 'rifle', 'shotgun', 'sniper'];
 
 // ── World bounds (loose safety net; real containment is the wall boxes) ───────
 // Expanded eastward (+x) to include the parkour zone beyond the arena's east wall.
-export const WORLD_BOUNDS = { minX: -29, maxX: 88, minZ: -29, maxZ: 29 };
+export const WORLD_BOUNDS = { minX: -29, maxX: 120, minZ: -29, maxZ: 29 };
 
 // Fall below this Y in the parkour zone → respawn at the last checkpoint.
 export const VOID_Y = -8;
@@ -143,30 +143,42 @@ function P(x, top, z, w, d, cp = false) {
 export const PARKOUR_START = { x: 32, y: 0, z: 0 };
 const PARKOUR_START_BOX = { x: 32, y: -1, z: 0, w: 8, h: 2, d: 10, top: 0, kind: 'parkourStart' };
 
-// Right side (+z) = EASIER course: small gaps, gentle height changes.
+// Right side (+z) = EASIER course: small gaps, gentle height changes, but longer now.
 const PARKOUR_EASY = [
-  P(38,   0.8,  3,   2.6, 2.6, true),
-  P(41.5, 1.3,  5.5, 2.3, 2.3),
-  P(45,   1.0,  7.5, 2.3, 2.3),
-  P(48.5, 1.7,  8,   2.3, 2.3, true),
-  P(52,   1.3,  7,   2.1, 2.1),
-  P(55.5, 2.1,  5.5, 2.1, 2.1),
-  P(59,   1.7,  3.5, 2.3, 2.3, true),
-  P(63,   1.3,  2,   3.5, 3.5, true),  // finish
+  P(38,    0.8,  3,   2.6, 2.6, true),
+  P(41.5,  1.3,  5.5, 2.3, 2.3),
+  P(45,    1.0,  7.5, 2.3, 2.3),
+  P(48.5,  1.7,  8,   2.3, 2.3, true),
+  P(52,    1.3,  7,   2.1, 2.1),
+  P(55.5,  2.1,  5.5, 2.1, 2.1),
+  P(59,    1.7,  3.5, 2.2, 2.2, true),
+  P(62.5,  2.3,  2.5, 2.1, 2.1),
+  P(66,    1.6,  3.5, 2.1, 2.1),
+  P(69.5,  2.2,  5.5, 2.1, 2.1, true),
+  P(73,    1.5,  7,   2.2, 2.2),
+  P(76.5,  2.0,  8,   2.0, 2.0),
+  P(80,    1.4,  6.5, 2.1, 2.1, true),
+  P(83.5,  1.0,  8,   3.5, 3.5, true),  // finish
 ];
 
-// Left side (-z) = HARDER course: bigger diagonal gaps, smaller pads, more height swing.
+// Left side (-z) = HARDER course: long, with tight pads, beams, sprint gaps and big height swings.
 const PARKOUR_HARD = [
-  P(38,   1.3, -3,   1.7, 1.7, true),
-  P(42,   2.1, -5.5, 1.4, 1.4),
-  P(46,   1.4, -7.5, 1.3, 1.3),
-  P(50,   2.7, -8,   1.3, 1.3, true),
-  P(54.5, 1.9, -7,   1.2, 1.2),
-  P(59,   3.0, -5,   1.2, 1.2),
-  P(63.5, 2.1, -3.5, 1.3, 1.3, true),
-  P(68,   3.4, -2.5, 1.2, 1.2),
-  P(72.5, 2.5, -4.5, 1.3, 1.3),
-  P(77,   1.7, -6.5, 3.5, 3.5, true),  // finish
+  P(38,    1.3, -3,   1.6, 1.6, true),
+  P(42,    2.2, -5.5, 1.3, 1.3),
+  P(46,    1.5, -7.5, 1.2, 1.2),
+  P(50,    2.8, -8,   1.2, 1.2, true),
+  P(54.5,  1.9, -6.5, 1.1, 1.1),
+  P(59,    3.2, -4.5, 1.1, 1.1),
+  P(63.5,  2.1, -3,   1.2, 1.2, true),
+  P(71,    2.6, -3,   5,   0.9),          // balance beam along X
+  P(76,    3.6, -5,   1.0, 1.0),          // small high pad
+  P(80,    2.4, -7,   1.0, 1.0, true),
+  P(84.5,  3.8, -6,   1.0, 1.0),          // sprint gap + climb
+  P(89,    2.6, -3.5, 1.0, 1.0),
+  P(93.5,  3.0, -2,   4.5, 0.85),         // second balance beam
+  P(98,    4.0, -3.5, 1.0, 1.0, true),
+  P(102.5, 2.8, -5.5, 1.0, 1.0),
+  P(107,   2.0, -7,   3.5, 3.5, true),    // finish
 ];
 
 // Checkpoint respawn points (feet stand on the platform top).

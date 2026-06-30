@@ -17,6 +17,10 @@ export class LocalPlayer {
     this.pitch     = 0;
     this.ads       = false;
 
+    // Previous physics-step position, for render interpolation (smooth motion
+    // while physics runs at a fixed timestep). Kept in sync on teleports.
+    this._prevX = 0; this._prevY = 0; this._prevZ = 0;
+
     // Head-bob + landing-squish (client-only, cosmetic)
     this._bobPhase   = 0;   // oscillator phase
     this._bobAmt     = 0;   // current bob magnitude
@@ -138,6 +142,9 @@ export class LocalPlayer {
     this.vx = pk.vx; this.vy = pk.vy; this.vz = pk.vz;
     this.parkourCP = pk.cp;
     if (pk.newCheckpoint) this.onCheckpoint?.();
+    // A void-respawn is a teleport — kill interpolation so the camera doesn't
+    // slingshot across the gap for one frame.
+    if (pk.respawned) { this._prevX = this.x; this._prevY = this.y; this._prevZ = this.z; }
 
     // ── Head bob ──────────────────────────────────────────────────────────
     const moving = this.onGround && (mx !== 0 || mz !== 0);
@@ -178,19 +185,25 @@ export class LocalPlayer {
     const dx = s.x - this.x, dy = s.y - this.y, dz = s.z - this.z;
     const d2 = dx*dx + dy*dy + dz*dz;
     if (d2 > RECONCILE_DST ** 2) {
-      // Big jump → snap (e.g. respawn)
+      // Big jump → snap (e.g. respawn). Sync interpolation to avoid a slingshot.
       this.x = s.x; this.y = s.y; this.z = s.z; this.vy = s.vy ?? this.vy;
+      this._prevX = this.x; this._prevY = this.y; this._prevZ = this.z;
     } else {
-      // Correct ~25% of the horizontal error per snapshot (20 Hz) → invisible.
-      this.x += dx * 0.25;
-      this.z += dz * 0.25;
+      // Deadzone: ignore sub-centimetre drift so the view never micro-jitters.
+      const DEAD = 0.04;
+      if (Math.abs(dx) > DEAD) this.x += dx * 0.2;
+      if (Math.abs(dz) > DEAD) this.z += dz * 0.2;
       // VERTICAL: only correct while grounded. Mid-air, the server (20 Hz) and
-      // client (60 fps) integrate the jump arc with different timesteps, so Y
-      // briefly diverges; correcting it every snapshot yanks the camera and
-      // looks like heavy lag. On the ground both clamp to the same floor/box
-      // height, so they re-sync naturally with no visible jump.
-      if (this.onGround) this.y += dy * 0.25;
+      // client (fixed step) integrate the jump arc slightly differently, so Y
+      // briefly diverges; correcting it every snapshot yanks the camera. On the
+      // ground both clamp to the same floor/box height, so they re-sync cleanly.
+      if (this.onGround && Math.abs(dy) > DEAD) this.y += dy * 0.2;
     }
+  }
+
+  // Snapshot current position before a fixed physics step (for interpolation).
+  savePrev() {
+    this._prevX = this.x; this._prevY = this.y; this._prevZ = this.z;
   }
 
   currentInput() {
@@ -205,13 +218,17 @@ export class LocalPlayer {
     };
   }
 
-  // Eye position. No walking head-bob (it made the view wobble constantly);
-  // only the brief landing-squish dip remains.
-  eyePosition() {
+  // Eye position, interpolated between the previous and current physics step by
+  // `alpha` (0..1) for buttery-smooth motion regardless of framerate. No walking
+  // head-bob; only the brief landing-squish dip remains.
+  eyePosition(alpha = 1) {
+    const ix = this._prevX + (this.x - this._prevX) * alpha;
+    const iy = this._prevY + (this.y - this._prevY) * alpha;
+    const iz = this._prevZ + (this.z - this._prevZ) * alpha;
     return {
-      x: this.x,
-      y: this.y + PLAYER_EYE_OFFSET - this._squish,
-      z: this.z,
+      x: ix,
+      y: iy + PLAYER_EYE_OFFSET - this._squish,
+      z: iz,
     };
   }
 

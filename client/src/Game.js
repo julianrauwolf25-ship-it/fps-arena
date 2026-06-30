@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { MAP_BOXES, ARENA_HALF, VOID_Y, WEAPONS, WEAPON_KEYS } from '../../shared/constants.js';
 import { RemotePlayer } from './RemotePlayer.js';
 
@@ -98,36 +99,68 @@ export class Game {
 
   _initScene() {
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x8bb8d0, 0.018);
-    this.scene.background = new THREE.Color(0x7ab3d4);
+    this.scene.fog = new THREE.FogExp2(0x9cc2da, 0.014);
 
-    // Hemisphere: sky-blue above, earth-green below
-    this.scene.add(new THREE.HemisphereLight(0x9ac8ef, 0x4a6830, 0.55));
+    // ── Image-based lighting (IBL) ─────────────────────────────────────────
+    // A pre-filtered environment map gives realistic ambient light and proper
+    // reflections on metallic surfaces (weapons, metal cover) — a big quality
+    // jump over flat ambient light, with almost no runtime cost.
+    const pmrem  = new THREE.PMREMGenerator(this.renderer);
+    this._envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environment = this._envTex;
+
+    // ── Gradient sky dome ──────────────────────────────────────────────────
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(400, 32, 16),
+      new THREE.ShaderMaterial({
+        side: THREE.BackSide, depthWrite: false, fog: false,
+        uniforms: {
+          top:      { value: new THREE.Color(0x2a6bbf) },
+          mid:      { value: new THREE.Color(0x8fc0e0) },
+          bottom:   { value: new THREE.Color(0xd9e8f2) },
+        },
+        vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+        fragmentShader: `
+          uniform vec3 top; uniform vec3 mid; uniform vec3 bottom; varying vec3 vP;
+          void main(){
+            float h = normalize(vP).y;
+            vec3 c = h > 0.0 ? mix(mid, top, pow(h, 0.6)) : mix(mid, bottom, pow(-h, 0.5));
+            gl_FragColor = vec4(c, 1.0);
+          }`,
+      }),
+    );
+    sky.frustumCulled = false;
+    this.scene.add(sky);
+    this._sky = sky;
+
+    // Soft hemisphere ambient (IBL does most of the fill now, so keep it low)
+    this.scene.add(new THREE.HemisphereLight(0x9ac8ef, 0x4a6830, 0.35));
 
     // Main sun with soft shadows
-    const sun = new THREE.DirectionalLight(0xfff4d6, 1.6);
-    sun.position.set(14, 40, 18);
+    const sun = new THREE.DirectionalLight(0xfff2d0, 2.2);
+    sun.position.set(24, 48, 22);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.near   = 1;
-    sun.shadow.camera.far    = 120;
-    sun.shadow.camera.left   = sun.shadow.camera.bottom = -55;
-    sun.shadow.camera.right  = sun.shadow.camera.top    =  55;
+    sun.shadow.camera.far    = 160;
+    sun.shadow.camera.left   = sun.shadow.camera.bottom = -70;
+    sun.shadow.camera.right  = sun.shadow.camera.top    =  70;
     sun.shadow.bias          = -0.0003;
+    sun.shadow.normalBias    = 0.02;
     this.scene.add(sun);
 
-    // Bounce fill from opposite direction
-    const fill = new THREE.DirectionalLight(0xadd8f0, 0.35);
-    fill.position.set(-10, 8, -12);
+    // Cool bounce fill from the opposite side
+    const fill = new THREE.DirectionalLight(0xbcdcf0, 0.3);
+    fill.position.set(-12, 10, -14);
     this.scene.add(fill);
 
-    // Warm point lights at map quadrants
+    // Warm/cool accent point lights around the arena
     const ptCfg = [
-      { pos: [ 18, 2.5,  18], color: 0xff9955, intensity: 12, dist: 14 },
-      { pos: [-18, 2.5,  18], color: 0xff9955, intensity: 12, dist: 14 },
-      { pos: [ 18, 2.5, -18], color: 0x55aaff, intensity: 10, dist: 14 },
-      { pos: [-18, 2.5, -18], color: 0x55aaff, intensity: 10, dist: 14 },
-      { pos: [  0, 3,    0 ], color: 0xffd080, intensity: 18, dist: 16 },
+      { pos: [ 18, 2.5,  18], color: 0xff9955, intensity: 14, dist: 15 },
+      { pos: [-18, 2.5,  18], color: 0xff9955, intensity: 14, dist: 15 },
+      { pos: [ 18, 2.5, -18], color: 0x55aaff, intensity: 12, dist: 15 },
+      { pos: [-18, 2.5, -18], color: 0x55aaff, intensity: 12, dist: 15 },
+      { pos: [  0, 3.5,  0 ], color: 0xffd080, intensity: 20, dist: 18 },
     ];
     for (const { pos, color, intensity, dist } of ptCfg) {
       const pl = new THREE.PointLight(color, intensity, dist, 2);
@@ -137,7 +170,7 @@ export class Game {
   }
 
   _initCamera() {
-    this.camera = new THREE.PerspectiveCamera(FOV_HIP, 1, 0.05, 300);
+    this.camera = new THREE.PerspectiveCamera(FOV_HIP, 1, 0.05, 600);
     this.camera.rotation.order = 'YXZ';
   }
 
@@ -166,11 +199,11 @@ export class Game {
 
     // Dark "abyss" plane far below the parkour zone (purely visual depth cue)
     const voidPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(140, 90),
-      new THREE.MeshStandardMaterial({ color: 0x1a1f2a, roughness: 1 }),
+      new THREE.PlaneGeometry(240, 100),
+      new THREE.MeshStandardMaterial({ color: 0x161b26, roughness: 1 }),
     );
     voidPlane.rotation.x = -Math.PI / 2;
-    voidPlane.position.set(45, VOID_Y - 2, 0);
+    voidPlane.position.set(65, VOID_Y - 2, 0);
     this.scene.add(voidPlane);
 
     // Materials reused for parkour platforms (cached so we don't rebuild per box)
@@ -237,6 +270,7 @@ export class Game {
 
   _buildViewmodel() {
     this.vmScene  = new THREE.Scene();
+    this.vmScene.environment = this._envTex;   // reflections on the weapon metal
     this.vmCamera = new THREE.PerspectiveCamera(60, 1, 0.01, 10);
     this.vmCamera.rotation.order = 'YXZ';
 
@@ -446,7 +480,7 @@ export class Game {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  render(localPlayer, dt) {
+  render(localPlayer, dt, alpha = 1) {
     const nowMs  = performance.now();
     const weap   = WEAPONS[localPlayer.currentWeapon];
 
@@ -455,8 +489,8 @@ export class Game {
     this.camera.fov = FOV_HIP + (weap.adsFov - FOV_HIP) * this._adsLerp;
     this.camera.updateProjectionMatrix();
 
-    // Camera placement
-    const eye = localPlayer.eyePosition();
+    // Camera placement (interpolated between physics steps for smooth motion)
+    const eye = localPlayer.eyePosition(alpha);
     this.camera.position.set(eye.x, eye.y, eye.z);
     this.camera.rotation.y = localPlayer.yaw;
     this.camera.rotation.x = localPlayer.pitch;

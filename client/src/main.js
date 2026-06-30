@@ -139,19 +139,34 @@ function tryShoot() {
 }
 
 // ── Game loop ─────────────────────────────────────────────────────────────────
-let lastTime = 0;
+// Fixed-timestep physics + render interpolation = smooth, deterministic motion
+// that stays in sync with the 20 Hz authoritative server.
+const FIXED_DT = 1 / 60;   // physics step (seconds)
+let lastTime   = 0;
+let accumulator = 0;
 
 function loop(ts) {
   if (!inGame) return;
   requestAnimationFrame(loop);
 
-  const dt = Math.min((ts - lastTime) / 1000, 0.1);
+  let frameDt = (ts - lastTime) / 1000;
   lastTime = ts;
+  if (!isFinite(frameDt) || frameDt < 0) frameDt = 0;
+  frameDt = Math.min(frameDt, 0.1);
 
   // Full-auto weapons keep firing while the left button is held
   if (mouseLeftDown && WEAPONS[localPlayer.currentWeapon].auto) tryShoot();
 
-  if (!localPlayer.dead) localPlayer.update(dt);
+  // Step physics in fixed increments; never spiral if the tab was backgrounded
+  accumulator = Math.min(accumulator + frameDt, 0.25);
+  while (accumulator >= FIXED_DT) {
+    if (!localPlayer.dead) {
+      localPlayer.savePrev();
+      localPlayer.update(FIXED_DT);
+    }
+    accumulator -= FIXED_DT;
+  }
+  const alpha = accumulator / FIXED_DT; // interpolation factor for this frame
 
   // Show a one-time hint when crossing from the arena into the parkour zone
   const inParkour = localPlayer.x > ARENA_HALF;
@@ -160,5 +175,5 @@ function loop(ts) {
   }
   wasInParkour = inParkour;
 
-  game.render(localPlayer, dt);
+  game.render(localPlayer, frameDt, alpha);
 }
