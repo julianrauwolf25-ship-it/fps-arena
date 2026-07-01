@@ -28,6 +28,7 @@ export class LocalPlayer {
     this.currentWeapon = 'pistol';
     this.ammo          = WEAPONS.pistol.ammo;
     this.reloading     = false;
+    this.weaponLock    = null;   // set by a mini-game → blocks weapon switching
 
     // State
     this.health = 100;
@@ -93,9 +94,16 @@ export class LocalPlayer {
   }
 
   _switchWeapon(id) {
+    if (this.weaponLock) return;   // mini-game forces the weapon
     if (this.reloading || this.currentWeapon === id) return;
     this.currentWeapon = id;
     this.onWeaponSwitch?.(id);
+  }
+
+  // Called by the mini-game framework (mg_weapon_lock message).
+  setWeaponLock(weaponId) {
+    this.weaponLock = weaponId;
+    if (weaponId) { this.currentWeapon = weaponId; this.onWeaponSwitch?.(weaponId); }
   }
 
   update(dt) {

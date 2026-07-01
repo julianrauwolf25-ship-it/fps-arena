@@ -45,7 +45,7 @@ export class Room {
       },
       getPlayer: (id)        => this.players.get(id)?.player ?? null,
       teleport:  (p, pos)    => { if (p) { p.x = pos.x; p.y = pos.y; p.z = pos.z; p.vx = p.vy = p.vz = 0; } },
-      sendToHub: (p)         => { if (p) { p._eliminated = false; p.spawn(); } },
+      sendToHub: (p)         => { if (p) { p.eliminated = false; p.mgSpawn = null; p.weaponLock = null; p.spawn(); } },
     });
 
     this._iv = setInterval(() => this._tick(), TICK_MS);
@@ -126,7 +126,9 @@ export class Room {
     const { player } = e;
     if (player.dead || player.reloading) return;
 
-    const weapId = WEAPON_KEYS.includes(msg.weapon) ? msg.weapon : player.currentWeapon;
+    let weapId = WEAPON_KEYS.includes(msg.weapon) ? msg.weapon : player.currentWeapon;
+    // A mini-game may lock the player's weapon (Gun Game stage, Sniper Duel, …).
+    if (player.weaponLock && WEAPONS[player.weaponLock]) weapId = player.weaponLock;
     const weap   = WEAPONS[weapId];
     if (!weap) return;
 
@@ -226,6 +228,10 @@ export class Room {
           headshot,
           targetHealth: Math.max(0, target.health),
         });
+
+        // Route the combat event into a mini-game if both players are in one.
+        this.games.onCombat(id, target.id, weapId, kill, headshot);
+
         if (kill) break; // target already dead, no more pellets needed
       }
     }

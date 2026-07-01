@@ -90,8 +90,13 @@ export class GameManager {
 
   // Forward gameplay events from the server into the player's active mode.
   onShoot(playerId, shot) { this.gameOf(playerId)?.onPlayerShoot?.(playerId, shot); }
-  onHit(shooterId, targetId, weapon) {
-    this.gameOf(shooterId)?.onPlayerHit?.(shooterId, targetId, weapon);
+
+  /** A player hit/killed another. Routed only if both are in the SAME game. */
+  onCombat(shooterId, targetId, weapon, kill, headshot) {
+    const g = this.gameOf(shooterId);
+    if (g && g === this.gameOf(targetId) && g.phase === 'running') {
+      g.onCombat?.(shooterId, targetId, weapon, kill, headshot);
+    }
   }
 
   // ── Cleanup ──────────────────────────────────────────────────────────────────

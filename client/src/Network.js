@@ -49,6 +49,7 @@ export class Network {
       case 'mg_targets':   this.handlers.onMgTargets?.(msg);                     break;
       case 'mg_event':     this.handlers.onMgEvent?.(msg);                       break;
       case 'mg_notice':    this.handlers.onMgNotice?.(msg);                      break;
+      case 'mg_weapon_lock': this.handlers.onMgWeaponLock?.(msg);               break;
     }
   }
 

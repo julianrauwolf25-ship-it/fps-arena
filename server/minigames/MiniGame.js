@@ -15,9 +15,10 @@
 // Everything else (countdown, timer, scoreboard broadcast, player join/leave,
 // auto-reset) is free.
 
-import { Phase }      from './GamePhase.js';
-import { GameTimer }  from './GameTimer.js';
-import { Scoreboard } from './Scoreboard.js';
+import { Phase }        from './GamePhase.js';
+import { GameTimer }    from './GameTimer.js';
+import { Scoreboard }   from './Scoreboard.js';
+import { SPAWN_POINTS } from '../../shared/constants.js';
 
 const COUNTDOWN_SECONDS = 5;
 const ENDING_SECONDS    = 6;
@@ -162,11 +163,49 @@ export class MiniGame {
 
   broadcast(msg) { this.manager.broadcastTo(this.players.keys(), msg); }
 
-  alivePlayers() { return [...this.players.values()].filter(p => !p._eliminated); }
+  /** Send a message to a single player in this game. */
+  send(id, msg) { this.manager.broadcastTo([id], msg); }
 
+  alivePlayers() { return [...this.players.values()].filter(p => !p.eliminated); }
+
+  /** Eliminate a player: dead, no respawn, becomes a spectator until game end. */
   eliminate(id) {
     const p = this.players.get(id);
-    if (p) p._eliminated = true;
+    if (!p || p.eliminated) return;
+    p.eliminated = true;
+    p.dead       = true;
+    p.health     = 0;
+    this.broadcast({ type: 'mg_event', event: 'eliminated', id, name: p.name });
+  }
+
+  // ── Combat setup helpers (players are ServerPlayer objects) ──────────────────
+
+  /** Teleport all players to arena spawns, full health, clear combat flags. */
+  setupCombat(spawns = SPAWN_POINTS) {
+    let i = 0;
+    for (const p of this.players.values()) {
+      p.eliminated = false;
+      p.mgSpawn    = spawns[i % spawns.length];
+      p.spawn();                 // teleports + heals
+      i++;
+    }
+  }
+
+  /** Force a player's weapon (Gun Game stage, Sniper Duel). Locks client too. */
+  lockWeapon(id, weaponId) {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.weaponLock    = weaponId;
+    p.currentWeapon = weaponId;
+    this.send(id, { type: 'mg_weapon_lock', weapon: weaponId });
+  }
+
+  lockWeaponAll(weaponId) { for (const id of this.players.keys()) this.lockWeapon(id, weaponId); }
+
+  /** Instantly respawn a player at their arena spawn (full health). */
+  respawnPlayer(id) {
+    const p = this.players.get(id);
+    if (p && !p.eliminated) p.spawn();
   }
 
   _defaultWinnerByScore() {

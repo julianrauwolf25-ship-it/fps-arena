@@ -60,10 +60,23 @@ function attemptJoin() {
 
     // Mini-game framework
     onMgCatalogue(msg) { miniGames?.setCatalogue(msg.modes); },
-    onMgState(msg)     { miniGames?.onState(msg); },
+    onMgState(msg) {
+      miniGames?.onState(msg);
+      // Leaving/ending a game clears any weapon lock
+      if (msg.phase === 'reset' || msg.phase === 'ending') localPlayer?.setWeaponLock(null);
+    },
     onMgTargets(msg)   { miniGames?.onTargets(msg); },
     onMgEvent(msg)     { miniGames?.onEvent(msg); },
     onMgNotice(msg)    { miniGames?.onNotice(msg); },
+    onMgWeaponLock(msg) {
+      if (!localPlayer) return;
+      localPlayer.setWeaponLock(msg.weapon);
+      if (msg.weapon) {
+        game.setWeapon(msg.weapon);
+        hud.setWeapon(msg.weapon);
+        hud.setAmmo(WEAPONS[msg.weapon].ammo, false, msg.weapon);
+      }
+    },
   });
 
   net.connect();
@@ -105,7 +118,7 @@ function startGame(myId, initialSnapshot) {
   window.addEventListener('keydown', (e) => {
     if (!inGame) return;
     if (e.code === 'KeyE')   miniGames.tryJoin();
-    if (e.code === 'Escape') miniGames.leave();
+    if (e.code === 'Escape') { miniGames.leave(); localPlayer.setWeaponLock(null); }
   });
 
   // Pointer lock on click

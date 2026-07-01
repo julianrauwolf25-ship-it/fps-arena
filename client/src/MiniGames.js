@@ -166,8 +166,16 @@ export class MiniGames {
 
   onState(msg)   { this.state = msg; this._renderOverlay(msg); }
   onTargets(msg) { this._syncTargets(msg.targets); }
-  onEvent(msg)   { if (msg.event === 'target_hit') this._pingHit(); }
   onNotice(msg)  { this._toast(msg.text); }
+
+  onEvent(msg) {
+    switch (msg.event) {
+      case 'target_hit': this._pingHit(); break;
+      case 'tagged':     this._toast(`💣 ${msg.name} hat die Bombe!`); break;
+      case 'levelup':    this._toast(`Stufe ${msg.level}/${msg.total}`); break;
+      case 'eliminated': if (msg.id === this.net.myId) this._toast('☠ Ausgeschieden – Zuschauer'); break;
+    }
+  }
 
   // ── Overlay rendering by phase ──────────────────────────────────────────────
 

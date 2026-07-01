@@ -33,24 +33,34 @@ export class ServerPlayer {
     this.onGround = false;
     this.parkourCP = null;  // last parkour checkpoint reached
 
+    // Mini-game combat state (set/cleared by the mini-game framework)
+    this.mgSpawn      = null;   // {x,y,z} respawn override while in a mini-game
+    this.eliminated   = false;  // true → stays dead (no respawn) until game ends
+    this.weaponLock   = null;   // forced weapon id (Gun Game / Sniper etc.)
+
     this.spawn();
   }
 
   spawn() {
-    const sp = SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
-    this.x  = sp.x + (Math.random() - 0.5) * 2;
+    // Mini-game respawn override (e.g. an arena spawn set by the mode).
+    const sp = this.mgSpawn
+      ? this.mgSpawn
+      : SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
+    this.x  = sp.x + (Math.random() - 0.5) * (this.mgSpawn ? 0 : 2);
     this.y  = sp.y;
-    this.z  = sp.z + (Math.random() - 0.5) * 2;
+    this.z  = sp.z + (Math.random() - 0.5) * (this.mgSpawn ? 0 : 2);
     this.vx = 0; this.vy = 0; this.vz = 0;
     this.health    = MAX_HEALTH;
     this.dead      = false;
     this.reloading = false;
-    this.parkourCP = null;  // back in the arena after a combat death
+    if (!this.mgSpawn) this.parkourCP = null;  // back in the arena after a combat death
     for (const k of WEAPON_KEYS) this.ammo[k] = WEAPONS[k].ammo;
   }
 
   update(dt, input) {
     if (this.dead) {
+      // Eliminated mini-game players stay dead (spectators) until the game ends.
+      if (this.eliminated) return;
       this.respawnTimer -= dt * 1000;
       if (this.respawnTimer <= 0) this.spawn();
       return;
