@@ -89,6 +89,12 @@ export class Room {
     if (msg.type === 'reload')   this._reload(e);
     if (msg.type === 'mg_join')  this.games.joinQueue(id, String(msg.mode || ''));
     if (msg.type === 'mg_leave') this.games.leaveGame(id);
+    // Generic mini-game action channel (e.g. Build Battle place/remove). yaw/
+    // pitch travel alongside the action, same pattern as the shoot message, so
+    // the mode computes the player's aim from server-trusted rotation state.
+    if (msg.type === 'mg_action' && msg.action) {
+      this.games.onAction(id, { ...msg.action, yaw: msg.yaw, pitch: msg.pitch });
+    }
   }
 
   // ── Input ─────────────────────────────────────────────────────────────────

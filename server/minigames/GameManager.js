@@ -99,6 +99,9 @@ export class GameManager {
     }
   }
 
+  /** Generic mode-specific action (e.g. Build Battle place/remove). */
+  onAction(playerId, action) { this.gameOf(playerId)?.onPlayerAction?.(playerId, action); }
+
   // ── Cleanup ──────────────────────────────────────────────────────────────────
 
   /** Called by an instance after its ENDING phase: free players + drop it. */

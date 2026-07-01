@@ -145,6 +145,18 @@
       font-weight: 700; opacity: 0; transition: opacity .25s, transform .25s; }
     #mg-notice.show { opacity: 1; transform: translate(-50%, 0); }
 
+    /* Build Battle panel — right side, as requested ("wird rechts angezeigt") */
+    #build-panel { display: none; position: fixed; top: 50%; right: 20px; transform: translateY(-50%); z-index: 47;
+      pointer-events: none; background: rgba(10,12,20,.82); border: 1px solid #3a3f50; border-radius: 12px;
+      padding: 16px 20px; min-width: 150px; text-align: center; }
+    #build-panel .bp-label { color: #888; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 4px; }
+    #build-panel .bp-slots { display: flex; gap: 8px; justify-content: center; margin-bottom: 12px; }
+    #build-panel .bp-slot { width: 46px; height: 46px; border-radius: 8px; border: 2px solid #3a3f50; display: flex;
+      align-items: center; justify-content: center; font-size: 1.3rem; color: #667; background: rgba(255,255,255,.03); }
+    #build-panel .bp-slot.active { border-color: #e8c86a; color: #e8c86a; background: rgba(232,200,106,.12); }
+    #build-type  { color: #e8c86a; font-weight: 800; font-size: 1.15rem; margin-bottom: 4px; }
+    #build-count { color: #cfd3dc; font-size: .85rem; font-variant-numeric: tabular-nums; }
+
     /* Toast (checkpoint / parkour messages) */
     #toast { position: fixed; top: 22%; left: 50%; transform: translate(-50%, -10px); z-index: 45; pointer-events: none; opacity: 0; transition: opacity .25s, transform .25s; text-align: center; }
     #toast.show { opacity: 1; transform: translate(-50%, 0); }
@@ -215,6 +227,17 @@
     <span id="mg-timer">0:00</span>
     <div id="mg-scores"></div>
   </div>
+</div>
+
+<!-- Build Battle panel (right side) -->
+<div id="build-panel">
+  <div class="bp-label">Objekt</div>
+  <div class="bp-slots">
+    <div class="bp-slot" data-slot="1">▮</div>
+    <div class="bp-slot" data-slot="2">◺</div>
+  </div>
+  <div id="build-type">Wand</div>
+  <div id="build-count">0/20</div>
 </div>
 
 <!-- Sniper scope overlay -->

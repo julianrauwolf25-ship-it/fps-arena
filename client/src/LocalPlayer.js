@@ -29,6 +29,7 @@ export class LocalPlayer {
     this.ammo          = WEAPONS.pistol.ammo;
     this.reloading     = false;
     this.weaponLock    = null;   // set by a mini-game → blocks weapon switching
+    this.buildMode     = false;  // true while inside a running Build Battle round
 
     // State
     this.health = 100;
@@ -87,14 +88,14 @@ export class LocalPlayer {
     });
 
     window.addEventListener('mousedown', (e) => {
-      if (e.button === 2 && document.pointerLockElement) { this.ads = true; e.preventDefault(); }
+      if (e.button === 2 && document.pointerLockElement && !this.buildMode) { this.ads = true; e.preventDefault(); }
     });
     window.addEventListener('mouseup',   (e) => { if (e.button === 2) this.ads = false; });
     window.addEventListener('contextmenu', (e) => { if (document.pointerLockElement) e.preventDefault(); });
   }
 
   _switchWeapon(id) {
-    if (this.weaponLock) return;   // mini-game forces the weapon
+    if (this.weaponLock || this.buildMode) return;   // mini-game forces the weapon / mode
     if (this.reloading || this.currentWeapon === id) return;
     this.currentWeapon = id;
     this.onWeaponSwitch?.(id);
@@ -104,6 +105,12 @@ export class LocalPlayer {
   setWeaponLock(weaponId) {
     this.weaponLock = weaponId;
     if (weaponId) { this.currentWeapon = weaponId; this.onWeaponSwitch?.(weaponId); }
+  }
+
+  // Called by MiniGames.js when entering/leaving a running Build Battle round.
+  setBuildMode(active) {
+    this.buildMode = active;
+    if (active) this.ads = false;
   }
 
   update(dt) {

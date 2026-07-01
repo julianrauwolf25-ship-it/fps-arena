@@ -10,8 +10,16 @@
 // and calls update() each frame; everything else lives here.
 
 import * as THREE from 'three';
+import {
+  GRID, WALL_THICKNESS, MAX_PIECES_PER_PLAYER,
+  registerPiece, clearPieces,
+} from '../../shared/build.js';
 
 const JOIN_RADIUS = 3.2;
+
+// World-space rotation (radians) for the ramp wedge mesh per ascend `dir`
+// (0=+z,1=+x,2=-z,3=-x) — see _makePieceMesh for the geometry convention.
+const RAMP_ROT = [Math.PI / 2, 0, -Math.PI / 2, Math.PI];
 
 // Where the sign rows sit in the mini-games plaza (west of the arena).
 const ROW_Z = [-15, 15];
@@ -28,6 +36,11 @@ export class MiniGames {
     this.state    = null;        // latest mg_state
     this.nearSign = null;
 
+    // Build Battle
+    this.buildMeshes   = new Map();  // piece id → THREE.Mesh
+    this.buildPieceType = 'wall';    // currently selected piece type (client-only choice)
+    this._rampGeo = null;            // lazily-built shared wedge geometry
+
     this._cacheDom();
   }
 
@@ -40,6 +53,10 @@ export class MiniGames {
     this.elScores   = document.getElementById('mg-scores');
     this.elPrompt   = document.getElementById('mg-prompt');
     this.elNotice   = document.getElementById('mg-notice');
+    this.elBuild      = document.getElementById('build-panel');
+    this.elBuildType  = document.getElementById('build-type');
+    this.elBuildCount = document.getElementById('build-count');
+    this.elBuildSlots = this.elBuild?.querySelectorAll('.bp-slot') ?? [];
   }
 
   // ── Build the selection signs from the server catalogue ─────────────────────
@@ -150,9 +167,14 @@ export class MiniGames {
       this.elPrompt.innerHTML = this.nearSign.implemented
         ? `<kbd>E</kbd> &nbsp;<b>${esc(this.nearSign.name)}</b> beitreten`
         : `<b>${esc(this.nearSign.name)}</b> — folgt bald`;
+    } else if (this.isBuildMode()) {
+      this.elPrompt.style.display = 'block';
+      this.elPrompt.innerHTML = '<kbd>1</kbd> Wand · <kbd>2</kbd> Rampe · <kbd>Links</kbd> Bauen · <kbd>Rechts</kbd> Entfernen';
     } else {
       this.elPrompt.style.display = 'none';
     }
+
+    this._updateBuildPanel();
   }
 
   // E pressed near a sign → join that mode
@@ -160,7 +182,99 @@ export class MiniGames {
     if (this.nearSign) this.net.mgJoin(this.nearSign.id);
   }
 
-  leave() { this.net.mgLeave(); this._clearTargets(); this._renderOverlay(null); }
+  leave() {
+    this.net.mgLeave();
+    this._clearTargets();
+    this._clearBuildPieces();
+    this._renderOverlay(null);
+  }
+
+  // ── Build Battle ─────────────────────────────────────────────────────────────
+
+  isBuildMode() {
+    return !!(this.state && this.state.mode === 'build_battle' && this.state.phase === 'running');
+  }
+
+  setBuildPieceType(type) {
+    this.buildPieceType = type === 'ramp' ? 'ramp' : 'wall';
+  }
+
+  placeBuild(localPlayer) {
+    if (!this.isBuildMode()) return;
+    this.net.sendMgAction({ type: 'build_place', pieceType: this.buildPieceType }, localPlayer.yaw, localPlayer.pitch);
+  }
+
+  removeBuild(localPlayer) {
+    if (!this.isBuildMode()) return;
+    this.net.sendMgAction({ type: 'build_remove' }, localPlayer.yaw, localPlayer.pitch);
+  }
+
+  onBuildState(msg) {
+    // Resync the physics registry so LOCAL movement prediction collides with
+    // whatever is currently built (shared/build.js — same module used by
+    // shared/collision.js on this client).
+    clearPieces();
+    for (const p of msg.pieces) registerPiece(p);
+
+    // Resync visuals. Piece counts are small (≤ 20 × maxPlayers), so a full
+    // clear-and-rebuild each time is simpler and cheap enough vs. diffing.
+    for (const mesh of this.buildMeshes.values()) this.scene.remove(mesh);
+    this.buildMeshes.clear();
+    for (const p of msg.pieces) {
+      const mesh = this._makePieceMesh(p);
+      this.scene.add(mesh);
+      this.buildMeshes.set(p.id, mesh);
+    }
+  }
+
+  _clearBuildPieces() {
+    clearPieces();
+    for (const mesh of this.buildMeshes.values()) this.scene.remove(mesh);
+    this.buildMeshes.clear();
+  }
+
+  _makePieceMesh(p) {
+    if (p.type === 'ramp') {
+      if (!this._rampGeo) {
+        // A right-triangle profile (rises from height 0 at local X=-GRID/2 to
+        // GRID at X=+GRID/2), extruded GRID deep along Z — a smooth wedge
+        // sitting visually on top of the stepped invisible stair collider
+        // (see shared/build.js rampStepBoxes for why the collider is stepped).
+        const shape = new THREE.Shape();
+        shape.moveTo(0, 0); shape.lineTo(GRID, 0); shape.lineTo(GRID, GRID); shape.closePath();
+        const geo = new THREE.ExtrudeGeometry(shape, { depth: GRID, bevelEnabled: false });
+        geo.translate(-GRID / 2, 0, -GRID / 2);
+        this._rampGeo = geo;
+      }
+      const mat = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.7 });
+      const mesh = new THREE.Mesh(this._rampGeo, mat);
+      mesh.position.set(p.gx, p.gy, p.gz);
+      mesh.rotation.y = RAMP_ROT[p.dir] ?? 0;
+      mesh.castShadow = mesh.receiveShadow = true;
+      return mesh;
+    }
+    const w = p.orient === 'x' ? GRID : WALL_THICKNESS;
+    const d = p.orient === 'x' ? WALL_THICKNESS : GRID;
+    const mat = new THREE.MeshStandardMaterial({ color: 0xc9a66b, roughness: 0.8 });
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, GRID, d), mat);
+    mesh.position.set(p.gx, p.gy + GRID / 2, p.gz);
+    mesh.castShadow = mesh.receiveShadow = true;
+    return mesh;
+  }
+
+  _updateBuildPanel() {
+    if (!this.elBuild) return;
+    if (!this.isBuildMode()) { this.elBuild.style.display = 'none'; return; }
+
+    this.elBuild.style.display = 'block';
+    this.elBuildType.textContent = this.buildPieceType === 'ramp' ? 'Rampe' : 'Wand';
+    const slot = this.buildPieceType === 'ramp' ? '2' : '1';
+    for (const el of this.elBuildSlots) el.classList.toggle('active', el.dataset.slot === slot);
+
+    const mine = this.state?.scores?.find(s => s.id === this.net.myId);
+    const count = mine ? mine.score : 0;
+    this.elBuildCount.textContent = `${count}/${MAX_PIECES_PER_PLAYER}`;
+  }
 
   // ── Network handlers ────────────────────────────────────────────────────────
 

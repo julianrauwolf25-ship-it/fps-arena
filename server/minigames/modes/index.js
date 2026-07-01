@@ -9,8 +9,9 @@
 //   onCombat(shooterId, targetId, weapon, kill, headshot)  — a hit/kill occurred
 // and use the framework helpers setupCombat(), lockWeapon(All), eliminate().
 
-import { MiniGame }   from '../MiniGame.js';
-import { TargetRush } from './TargetRush.js';
+import { MiniGame }    from '../MiniGame.js';
+import { TargetRush }  from './TargetRush.js';
+import { BuildBattle } from './BuildBattle.js';
 
 const LADDER = ['pistol', 'rifle', 'shotgun', 'sniper']; // Gun Game progression
 
@@ -187,6 +188,7 @@ export const MODES = {
   [SniperDuel.meta.id]:      SniperDuel,
   [OneInTheChamber.meta.id]: OneInTheChamber,
   [TntTag.meta.id]:          TntTag,
+  [BuildBattle.meta.id]:     BuildBattle,
   [BowSpleef.meta.id]:       BowSpleef,
   [CaptureTheFlag.meta.id]:  CaptureTheFlag,
   [Payload.meta.id]:         Payload,

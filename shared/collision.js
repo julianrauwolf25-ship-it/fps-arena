@@ -2,6 +2,7 @@
 // Resolves player cylinder (approximated as AABB) against static MAP_BOXES.
 
 import { MAP_BOXES, PLAYER_RADIUS, PLAYER_HEIGHT, ARENA_HALF, MINIGAME_FLOOR } from './constants.js';
+import { getPieceBoxes } from './build.js';
 
 const PR = PLAYER_RADIUS;
 const PH = PLAYER_HEIGHT;
@@ -38,9 +39,12 @@ export function moveAndCollide(px, py, pz, vx, vy, vz, dt, onGround) {
   // Floor (arena only)
   if (py <= 0 && onArenaFloor(px, pz)) { py = 0; if (vy < 0) vy = 0; onGround = true; }
 
-  // Run 3 resolution passes for stability with multi-box corners
+  // Run 3 resolution passes for stability with multi-box corners.
+  // Dynamic build pieces (Build Battle walls/ramps) are merged in alongside the
+  // static map geometry so players collide with whatever has been built.
+  const boxes = MAP_BOXES.concat(getPieceBoxes());
   for (let pass = 0; pass < 3; pass++) {
-    for (const b of MAP_BOXES) {
+    for (const b of boxes) {
       const hw = b.w * 0.5, hh = b.h * 0.5, hd = b.d * 0.5;
 
       // Compute overlap on each axis (positive = penetrating)

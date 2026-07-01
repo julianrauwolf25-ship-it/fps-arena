@@ -64,10 +64,13 @@ function attemptJoin() {
       miniGames?.onState(msg);
       // Leaving/ending a game clears any weapon lock
       if (msg.phase === 'reset' || msg.phase === 'ending') localPlayer?.setWeaponLock(null);
+      // Build Battle: toggle build-mode input handling on the local player
+      if (localPlayer) localPlayer.setBuildMode(msg.mode === 'build_battle' && msg.phase === 'running');
     },
     onMgTargets(msg)   { miniGames?.onTargets(msg); },
     onMgEvent(msg)     { miniGames?.onEvent(msg); },
     onMgNotice(msg)    { miniGames?.onNotice(msg); },
+    onMgBuildState(msg) { miniGames?.onBuildState(msg); },
     onMgWeaponLock(msg) {
       if (!localPlayer) return;
       localPlayer.setWeaponLock(msg.weapon);
@@ -118,7 +121,17 @@ function startGame(myId, initialSnapshot) {
   window.addEventListener('keydown', (e) => {
     if (!inGame) return;
     if (e.code === 'KeyE')   miniGames.tryJoin();
-    if (e.code === 'Escape') { miniGames.leave(); localPlayer.setWeaponLock(null); }
+    if (e.code === 'Escape') {
+      miniGames.leave();
+      localPlayer.setWeaponLock(null);
+      localPlayer.setBuildMode(false);
+    }
+    // Build Battle: 1/2 pick the piece type instead of switching weapons
+    // (LocalPlayer's own Digit1-4 handler no-ops while buildMode is active).
+    if (miniGames.isBuildMode()) {
+      if (e.code === 'Digit1') miniGames.setBuildPieceType('wall');
+      if (e.code === 'Digit2') miniGames.setBuildPieceType('ramp');
+    }
   });
 
   // Pointer lock on click
@@ -127,7 +140,15 @@ function startGame(myId, initialSnapshot) {
   });
 
   // LEFT click = shoot (semi-auto fires on press; full-auto handled in loop)
+  // In a running Build Battle round, left/right click place/remove pieces
+  // instead — the mode locks out shooting/ADS entirely (no weapon needed).
   window.addEventListener('mousedown', (e) => {
+    if (!document.pointerLockElement) return;
+    if (miniGames.isBuildMode()) {
+      if (e.button === 0) miniGames.placeBuild(localPlayer);
+      if (e.button === 2) miniGames.removeBuild(localPlayer);
+      return;
+    }
     if (e.button === 0) {
       mouseLeftDown = true;
       tryShoot();   // immediate first shot

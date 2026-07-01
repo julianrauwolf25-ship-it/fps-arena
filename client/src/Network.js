@@ -50,6 +50,7 @@ export class Network {
       case 'mg_event':     this.handlers.onMgEvent?.(msg);                       break;
       case 'mg_notice':    this.handlers.onMgNotice?.(msg);                      break;
       case 'mg_weapon_lock': this.handlers.onMgWeaponLock?.(msg);               break;
+      case 'mg_build_state': this.handlers.onMgBuildState?.(msg);               break;
     }
   }
 
@@ -69,6 +70,11 @@ export class Network {
 
   mgJoin(mode) { this.send({ type: 'mg_join', mode }); }
   mgLeave()    { this.send({ type: 'mg_leave' }); }
+
+  // Generic mini-game action (Build Battle place/remove, etc). yaw/pitch travel
+  // alongside so the server computes the aim ray itself (never trusts a
+  // client-supplied origin/direction) — same pattern as sendShoot.
+  sendMgAction(action, yaw, pitch) { this.send({ type: 'mg_action', action, yaw, pitch }); }
 
   sendReload() { this.send({ type: 'reload' }); }
 }
