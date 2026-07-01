@@ -46,7 +46,7 @@ export class MiniGames {
 
   setCatalogue(modes) {
     // Clear any previous signs (e.g. on reconnect)
-    for (const s of this.signs) { this.scene.remove(s.post); this.scene.remove(s.pad); s.label.remove(); }
+    for (const s of this.signs) { this.scene.remove(s.post); this.scene.remove(s.pad); }
     this.signs = [];
 
     modes.forEach((m, i) => {
@@ -54,24 +54,35 @@ export class MiniGames {
       const z = ROW_Z[Math.floor(i / ROW_X.length)];
       const color = m.implemented ? 0xe8c86a : 0x667080;
 
-      // Post + panel
+      // Two wooden posts holding a sign board (like a hanging shop sign)
       const post = new THREE.Group();
-      const pole = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.12, 0.12, 3, 6),
-        new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8 }),
+      const postMat = new THREE.MeshStandardMaterial({ color: 0x5a3d24, roughness: 0.9 });
+      for (const sx of [-1.7, 1.7]) {
+        const pole = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.4, 0.18), postMat);
+        pole.position.set(sx, 1.7, 0);
+        pole.castShadow = true;
+        post.add(pole);
+      }
+      // Cross beam
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(3.7, 0.18, 0.18), postMat);
+      beam.position.set(0, 3.5, 0);
+      post.add(beam);
+
+      // The sign BOARD — the mini-game name is painted onto it (a texture),
+      // not floating in the air.
+      const boardTex = this._signTexture(m);
+      const board = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.3, 1.7),
+        new THREE.MeshStandardMaterial({ map: boardTex, roughness: 0.7, side: THREE.DoubleSide,
+          emissive: 0xffffff, emissiveMap: boardTex, emissiveIntensity: 0.35 }),
       );
-      pole.position.y = 1.5;
-      post.add(pole);
-      const panel = new THREE.Mesh(
-        new THREE.BoxGeometry(3.2, 1.4, 0.2),
-        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: m.implemented ? 0.5 : 0.15, roughness: 0.5 }),
-      );
-      panel.position.y = 3.2;
-      post.add(panel);
+      board.position.set(0, 2.4, 0);
+      post.add(board);
+
       post.position.set(x, 0, z);
       this.scene.add(post);
 
-      // Glowing join pad on the ground
+      // Glowing join pad on the ground in front of the sign
       const pad = new THREE.Mesh(
         new THREE.CylinderGeometry(1.4, 1.5, 0.12, 20),
         new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.7, roughness: 0.4 }),
@@ -79,30 +90,47 @@ export class MiniGames {
       pad.position.set(x, 0.07, z + 2.2);
       this.scene.add(pad);
 
-      // DOM label (billboarded each frame)
-      const label = document.createElement('div');
-      label.className = 'mg-sign-label' + (m.implemented ? '' : ' soon');
-      label.innerHTML = `<b>${esc(m.name)}</b><span>${m.implemented ? `${m.minPlayers}-${m.maxPlayers} Spieler` : 'folgt bald'}</span>`;
-      document.body.appendChild(label);
-
-      this.signs.push({ ...m, pos: new THREE.Vector3(x, 3.2, z), padPos: new THREE.Vector3(x, 0, z + 2.2), post, pad, label });
+      this.signs.push({ ...m, padPos: new THREE.Vector3(x, 0, z + 2.2), post, pad });
     });
+  }
+
+  // Paints a mini-game's name + info onto a wooden sign-board texture.
+  _signTexture(m) {
+    const w = 512, h = 264;
+    const cv = Object.assign(document.createElement('canvas'), { width: w, height: h });
+    const ctx = cv.getContext('2d');
+
+    // Wooden board with plank lines + border
+    ctx.fillStyle = m.implemented ? '#6b4a2b' : '#4b4f57';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 2;
+    for (let y = 22; y < h; y += 44) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+    ctx.strokeStyle = m.implemented ? '#e8c86a' : '#8a93a6'; ctx.lineWidth = 10;
+    ctx.strokeRect(8, 8, w - 16, h - 16);
+
+    // Name (wraps to two lines if long)
+    ctx.fillStyle = m.implemented ? '#ffe9a8' : '#c3c9d4';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 6;
+    const lines = wrap(m.name.toUpperCase(), 12);
+    const fs = lines.length > 1 ? 52 : 62;
+    ctx.font = `bold ${fs}px Arial, sans-serif`;
+    lines.forEach((ln, i) => ctx.fillText(ln, w / 2, 96 + i * (fs + 6) - (lines.length - 1) * (fs + 6) / 2));
+
+    // Sub line
+    ctx.shadowBlur = 3;
+    ctx.font = 'bold 30px Arial, sans-serif';
+    ctx.fillStyle = m.implemented ? '#bfe6b0' : '#9aa3b3';
+    ctx.fillText(m.implemented ? `${m.minPlayers}–${m.maxPlayers} Spieler` : 'folgt bald', w / 2, h - 44);
+
+    const tex = new THREE.CanvasTexture(cv);
+    tex.anisotropy = 4;
+    return tex;
   }
 
   // ── Per-frame update (proximity prompt + label projection) ──────────────────
 
   update(localPlayer) {
-    const cam = this.game.camera, rend = this.game.renderer;
-
-    // Project sign labels to screen
-    for (const s of this.signs) {
-      const v = s.pos.clone().project(cam);
-      if (v.z >= 1) { s.label.style.display = 'none'; continue; }
-      s.label.style.display = 'block';
-      s.label.style.left = ((v.x + 1) / 2 * rend.domElement.clientWidth) + 'px';
-      s.label.style.top  = ((1 - v.y) / 2 * rend.domElement.clientHeight) + 'px';
-    }
-
     // Don't offer joining while already in a running/lobby game
     const inGame = this.state && this.state.phase !== 'reset';
 
@@ -226,6 +254,18 @@ export class MiniGames {
 
 function esc(s) {
   return String(s).replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;' }[c]));
+}
+// Greedy word-wrap into lines of at most `max` characters.
+function wrap(text, max) {
+  const words = text.split(' ');
+  const lines = [];
+  let cur = '';
+  for (const w of words) {
+    if ((cur + ' ' + w).trim().length > max && cur) { lines.push(cur); cur = w; }
+    else cur = (cur + ' ' + w).trim();
+  }
+  if (cur) lines.push(cur);
+  return lines.slice(0, 2);
 }
 function fmtTime(sec) {
   const m = Math.floor(sec / 60), s = sec % 60;
