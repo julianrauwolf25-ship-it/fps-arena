@@ -87,8 +87,9 @@ export class HUD {
     this._toastTimer = setTimeout(() => this._toast.classList.remove('show'), ms);
   }
 
-  flashHitmarker(kill) {
-    this._hitmarker.style.borderColor = kill ? '#ffe000' : '#ff4040';
+  flashHitmarker(kill, headshot = false) {
+    // Gold on a kill, orange on a headshot, red on a normal body hit.
+    this._hitmarker.style.borderColor = kill ? '#ffe000' : headshot ? '#ff8a1e' : '#ff4040';
     this._hitmarker.classList.add('flash');
     clearTimeout(this._hmTimer);
     this._hmTimer = setTimeout(() => this._hitmarker.classList.remove('flash'), 180);

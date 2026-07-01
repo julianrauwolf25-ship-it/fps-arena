@@ -50,7 +50,7 @@ function attemptJoin() {
 
     onHit(msg) {
       if (!inGame) return;
-      if (msg.shooterId === net.myId) hud.flashHitmarker(msg.kill);
+      if (msg.shooterId === net.myId) hud.flashHitmarker(msg.kill, msg.headshot);
       if (msg.kill) hud.addKillFeed(msg.shooterName, msg.targetName, msg.shooterId, msg.targetId);
       if (msg.targetId === net.myId) hud.showHitVignette();
     },

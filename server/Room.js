@@ -2,6 +2,7 @@ import {
   TICK_MS, RESPAWN_TIME,
   PLAYER_HEIGHT, PLAYER_RADIUS,
   MAX_MSG_PER_SECOND,
+  HEADSHOT_MULT, HEAD_ZONE_HEIGHT,
   WEAPONS, WEAPON_KEYS,
 } from '../shared/constants.js';
 import { ServerPlayer } from './Player.js';
@@ -198,6 +199,12 @@ export class Room {
           }
           dmg = weap.damage * mult;
         }
+
+        // Headshot: hit in the top HEAD_ZONE_HEIGHT of the player box → ×1.5.
+        const hitY = eye.y + dirY * hitDist;
+        const headshot = hitY >= target.y + PLAYER_HEIGHT - HEAD_ZONE_HEIGHT;
+        if (headshot) dmg *= HEADSHOT_MULT;
+
         dmg = Math.round(dmg);
 
         target.health -= dmg;
@@ -216,6 +223,7 @@ export class Room {
           targetName:  target.name,
           damage:      dmg,
           kill,
+          headshot,
           targetHealth: Math.max(0, target.health),
         });
         if (kill) break; // target already dead, no more pellets needed

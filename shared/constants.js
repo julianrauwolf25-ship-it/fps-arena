@@ -17,6 +17,11 @@ export const PLAYER_EYE_OFFSET = 1.6;
 export const MAX_HEALTH   = 100;
 export const RESPAWN_TIME = 3000;
 
+// Headshots: a hit in the top HEAD_ZONE_HEIGHT metres of the player box deals
+// HEADSHOT_MULT× damage. Applies to every weapon.
+export const HEADSHOT_MULT       = 1.5;
+export const HEAD_ZONE_HEIGHT    = 0.35;
+
 // Rate limiting
 export const MAX_MSG_PER_SECOND = 150;
 
