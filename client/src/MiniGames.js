@@ -37,9 +37,10 @@ export class MiniGames {
     this.nearSign = null;
 
     // Build Battle
-    this.buildMeshes   = new Map();  // piece id → THREE.Mesh
+    this.buildMeshes    = new Map(); // piece id → THREE.Mesh
     this.buildPieceType = 'wall';    // currently selected piece type (client-only choice)
-    this._rampGeo = null;            // lazily-built shared wedge geometry
+    this._rampGeo       = null;      // lazily-built shared wedge geometry
+    this.buildInputOn    = true;     // manual toggle (B key) — build vs. shoot while in the mode
 
     this._cacheDom();
   }
@@ -169,7 +170,10 @@ export class MiniGames {
         : `<b>${esc(this.nearSign.name)}</b> — folgt bald`;
     } else if (this.isBuildMode()) {
       this.elPrompt.style.display = 'block';
-      this.elPrompt.innerHTML = '<kbd>1</kbd> Wand · <kbd>2</kbd> Rampe · <kbd>Links</kbd> Bauen · <kbd>Rechts</kbd> Entfernen';
+      this.elPrompt.innerHTML = '<kbd>1</kbd> Wand · <kbd>2</kbd> Rampe · <kbd>Links</kbd> Bauen · <kbd>Rechts</kbd> Entfernen · <kbd>B</kbd> Schießen';
+    } else if (this.inBuildRound()) {
+      this.elPrompt.style.display = 'block';
+      this.elPrompt.innerHTML = '<kbd>B</kbd> zurück zum Bauen';
     } else {
       this.elPrompt.style.display = 'none';
     }
@@ -186,13 +190,28 @@ export class MiniGames {
     this.net.mgLeave();
     this._clearTargets();
     this._clearBuildPieces();
+    this.buildInputOn = true; // reset for next time
     this._renderOverlay(null);
   }
 
   // ── Build Battle ─────────────────────────────────────────────────────────────
 
+  /** Are we actively in build-input mode (round running AND not toggled off via B)? */
   isBuildMode() {
+    return !!(this.state && this.state.mode === 'build_battle' && this.state.phase === 'running' && this.buildInputOn);
+  }
+
+  /** True while inside a running Build Battle round, regardless of the B toggle
+   *  (used to gate the B key itself and the always-visible controls hint). */
+  inBuildRound() {
     return !!(this.state && this.state.mode === 'build_battle' && this.state.phase === 'running');
+  }
+
+  /** B key: swap between building and shooting without leaving the round. */
+  toggleBuildInput() {
+    if (!this.inBuildRound()) return;
+    this.buildInputOn = !this.buildInputOn;
+    this._toast(this.buildInputOn ? '🔨 Baumodus AN' : '🔫 Baumodus AUS — Schießen aktiv');
   }
 
   setBuildPieceType(type) {
@@ -237,9 +256,9 @@ export class MiniGames {
     if (p.type === 'ramp') {
       if (!this._rampGeo) {
         // A right-triangle profile (rises from height 0 at local X=-GRID/2 to
-        // GRID at X=+GRID/2), extruded GRID deep along Z — a smooth wedge
-        // sitting visually on top of the stepped invisible stair collider
-        // (see shared/build.js rampStepBoxes for why the collider is stepped).
+        // GRID at X=+GRID/2), extruded GRID deep along Z — a smooth wedge. The
+        // player actually walks it via an analytic slope (shared/build.js
+        // applyRampWalk), so this visual matches the real walkable surface.
         const shape = new THREE.Shape();
         shape.moveTo(0, 0); shape.lineTo(GRID, 0); shape.lineTo(GRID, GRID); shape.closePath();
         const geo = new THREE.ExtrudeGeometry(shape, { depth: GRID, bevelEnabled: false });
@@ -278,7 +297,15 @@ export class MiniGames {
 
   // ── Network handlers ────────────────────────────────────────────────────────
 
-  onState(msg)   { this.state = msg; this._renderOverlay(msg); }
+  onState(msg) {
+    // Fresh Build Battle round starting → default back to build-input mode.
+    const enteringRun = msg.mode === 'build_battle' && msg.phase === 'running'
+      && !(this.state && this.state.phase === 'running');
+    if (enteringRun) this.buildInputOn = true;
+
+    this.state = msg;
+    this._renderOverlay(msg);
+  }
   onTargets(msg) { this._syncTargets(msg.targets); }
   onNotice(msg)  { this._toast(msg.text); }
 

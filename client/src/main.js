@@ -64,8 +64,8 @@ function attemptJoin() {
       miniGames?.onState(msg);
       // Leaving/ending a game clears any weapon lock
       if (msg.phase === 'reset' || msg.phase === 'ending') localPlayer?.setWeaponLock(null);
-      // Build Battle: toggle build-mode input handling on the local player
-      if (localPlayer) localPlayer.setBuildMode(msg.mode === 'build_battle' && msg.phase === 'running');
+      // Build Battle: reflect isBuildMode() (round running AND not toggled off via B)
+      if (localPlayer) localPlayer.setBuildMode(miniGames.isBuildMode());
     },
     onMgTargets(msg)   { miniGames?.onTargets(msg); },
     onMgEvent(msg)     { miniGames?.onEvent(msg); },
@@ -131,6 +131,13 @@ function startGame(myId, initialSnapshot) {
     if (miniGames.isBuildMode()) {
       if (e.code === 'Digit1') miniGames.setBuildPieceType('wall');
       if (e.code === 'Digit2') miniGames.setBuildPieceType('ramp');
+    }
+    // B toggles between building and shooting while inside a Build Battle round
+    // (weapons/ammo the player already had are untouched by the mode, so
+    // switching "out" of build mode lets them shoot immediately).
+    if (e.code === 'KeyB' && miniGames.inBuildRound()) {
+      miniGames.toggleBuildInput();
+      localPlayer.setBuildMode(miniGames.isBuildMode());
     }
   });
 

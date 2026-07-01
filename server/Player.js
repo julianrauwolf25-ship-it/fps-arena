@@ -7,6 +7,7 @@ import {
 import { moveAndCollide }   from '../shared/collision.js';
 import { applyParkour }     from '../shared/parkour.js';
 import { jumpPadVelocity }  from '../shared/minigames.js';
+import { applyRampWalk }    from '../shared/build.js';
 
 export class ServerPlayer {
   constructor(id, name) {
@@ -115,6 +116,10 @@ export class ServerPlayer {
     // Minigame bounce pads
     const padVy = jumpPadVelocity(this);
     if (padVy !== this.vy) { this.vy = padVy; this.onGround = false; }
+
+    // Build Battle ramps: walk them like a sloped floor (analytic, not stairs)
+    const ramp = applyRampWalk(this.x, this.y, this.z, this.vy, this.onGround);
+    if (ramp) { this.y = ramp.y; this.vy = ramp.vy; this.onGround = ramp.onGround; }
 
     this.yaw   = yaw;
     this.pitch = typeof input.pitch === 'number' ? input.pitch : 0;
