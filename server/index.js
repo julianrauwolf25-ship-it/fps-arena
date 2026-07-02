@@ -17,10 +17,26 @@ app.get('/health', (_req, res) =>
   res.json({ status: 'ok', players: defaultRoom.players.size, tick: defaultRoom.tick }),
 );
 
-// Serve the Vite-built frontend; fall back to index.html for SPA navigation
+// Serve the Vite-built frontend; fall back to index.html for SPA navigation.
+// Cache policy: index.html must NEVER be cached (it references hash-named
+// bundles that change every deploy — a cached copy would point at a deleted
+// file, leaving players with a dead "Play" button). The hashed assets
+// themselves are immutable and can be cached forever.
 const distDir = join(__dirname, '../dist');
-app.use(express.static(distDir));
-app.get('*', (_req, res) => res.sendFile(join(distDir, 'index.html')));
+app.use(express.static(distDir, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  },
+}));
+app.get('*', (_req, res) =>
+  res.sendFile(join(distDir, 'index.html'), {
+    headers: { 'Cache-Control': 'no-cache, must-revalidate' },
+  }),
+);
 
 // ── WebSocket layer ───────────────────────────────────────────────────────────
 const wss = new WebSocketServer({ server });
