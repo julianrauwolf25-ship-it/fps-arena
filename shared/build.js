@@ -17,9 +17,20 @@
 // is exactly what "die Rampe hochlaufen können" needs.
 
 // ── Tunables ──────────────────────────────────────────────────────────────────
+// THE CUBE: every piece lives inside an imaginary GRID×GRID×GRID cube. A ramp
+// fills the cube's volume (rising 0→GRID); a wall is one thin face of the cube,
+// GRID wide × GRID tall, standing on a cell edge. Because both derive from the
+// same cube, tops align exactly and a wall placed in front of a ramp fully
+// occludes it (the ramp's vertical high face lies INSIDE the wall slab).
+//
+// Tunneling safety: to pass a wall unnoticed in one physics step, a player
+// would need to move WALL_THICKNESS + 2×PLAYER_RADIUS = 0.2 + 0.8 = 1.0 m in a
+// single tick; the fastest case (sprint 13 m/s × 0.05 s server tick) is 0.65 m
+// — so even this thin wall can never be tunneled through.
 
-export const GRID                  = 4;    // cell size: pieces are GRID×GRID footprint, GRID tall
-export const WALL_THICKNESS        = 1;    // wall depth along its thin axis
+export const GRID                  = 4;    // the cube: GRID×GRID footprint, GRID tall
+export const WALL_THICKNESS        = 0.2;  // wall depth along its thin axis (visual + collision)
+export const WALL_AIM_THICKNESS    = 0.8;  // wall thickness for AIM raycasts only (easier to target)
 export const MAX_PIECES_PER_PLAYER = 20;
 export const BUILD_REACH           = 12;   // max distance for raycast-snapped placement/removal
 export const FORWARD_DISTANCE      = GRID; // fallback placement distance when aiming at open air
@@ -85,12 +96,17 @@ export function getPieceBoxes() {
   return out;
 }
 
-/** A full GRID³ bounding box for a piece — used only for aim-raycasting
- *  (placement/removal targeting), never for movement collision. */
+/** Bounding box for AIM raycasting only (placement/removal targeting), never
+ *  for movement collision. Walls use a padded thickness so the now-very-thin
+ *  slab stays easy to point at; ramps use their full GRID³ cube. */
 export function pieceAimBox(piece) {
-  return piece.type === 'wall'
-    ? wallBox(piece)
-    : { x: piece.gx, y: piece.gy + GRID / 2, z: piece.gz, w: GRID, h: GRID, d: GRID };
+  if (piece.type === 'wall') {
+    const box = wallBox(piece);
+    if (piece.orient === 'x') box.d = WALL_AIM_THICKNESS;
+    else                      box.w = WALL_AIM_THICKNESS;
+    return box;
+  }
+  return { x: piece.gx, y: piece.gy + GRID / 2, z: piece.gz, w: GRID, h: GRID, d: GRID };
 }
 
 // ── Ramp geometry: analytic slope, walked exactly like the floor ─────────────
