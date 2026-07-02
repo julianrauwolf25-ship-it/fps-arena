@@ -143,15 +143,6 @@ export function applyRampWalk(x, y, z, vy, onGround) {
 
 // ── Placement helpers ─────────────────────────────────────────────────────────
 
-/** Snap a raw hit point to the piece grid (world coords, GRID-aligned). */
-export function snapToGrid(x, y, z) {
-  return {
-    gx: Math.round(x / GRID) * GRID,
-    gy: Math.max(0, Math.round(y / GRID) * GRID),
-    gz: Math.round(z / GRID) * GRID,
-  };
-}
-
 export function inBuildArena(gx, gz) {
   return gx >= BUILD_ARENA.minX && gx <= BUILD_ARENA.maxX
       && gz >= BUILD_ARENA.minZ && gz <= BUILD_ARENA.maxZ;
@@ -164,4 +155,103 @@ export function orientFromAim(fx, fz) {
 export function rampDirFromAim(fx, fz) {
   if (Math.abs(fx) > Math.abs(fz)) return fx > 0 ? 1 : 3;
   return fz > 0 ? 0 : 2;
+}
+
+// ── Shared placement computation (ghost preview ⟷ authoritative placement) ────
+// The client's translucent preview and the server's actual placement MUST land
+// on the same spot, so the whole pipeline lives here and both sides call it
+// with the same inputs (eye, view direction, feet height, yaw, piece type).
+//
+// Grid semantics (Fortnite-style):
+//   • A RAMP fills a whole grid cell — snapped to the cell CENTRE.
+//   • A WALL sits on a cell EDGE (the boundary line between two cells), thin
+//     axis centred exactly on that edge, snapped to the edge nearest the aim.
+
+/** Ray–AABB slab test (same technique as the hitscan shots). Exported so the
+ *  removal raycast on the server can reuse it. */
+export function rayAABB(origin, dir, box) {
+  const hw = box.w / 2, hh = box.h / 2, hd = box.d / 2;
+  const minX = box.x - hw, maxX = box.x + hw;
+  const minY = box.y - hh, maxY = box.y + hh;
+  const minZ = box.z - hd, maxZ = box.z + hd;
+  const eps = 1e-9;
+  const ix = Math.abs(dir.x) > eps ? 1 / dir.x : (dir.x >= 0 ? Infinity : -Infinity);
+  const iy = Math.abs(dir.y) > eps ? 1 / dir.y : (dir.y >= 0 ? Infinity : -Infinity);
+  const iz = Math.abs(dir.z) > eps ? 1 / dir.z : (dir.z >= 0 ? Infinity : -Infinity);
+
+  const tx1 = (minX - origin.x) * ix, tx2 = (maxX - origin.x) * ix;
+  const ty1 = (minY - origin.y) * iy, ty2 = (maxY - origin.y) * iy;
+  const tz1 = (minZ - origin.z) * iz, tz2 = (maxZ - origin.z) * iz;
+
+  const tmin = Math.max(Math.min(tx1, tx2), Math.min(ty1, ty2), Math.min(tz1, tz2));
+  const tmax = Math.min(Math.max(tx1, tx2), Math.max(ty1, ty2), Math.max(tz1, tz2));
+
+  if (tmax < 0 || tmin > tmax) return null;
+  return tmin >= 0 ? tmin : tmax;
+}
+
+/**
+ * Where is the player aiming? Prefers a precise hit (arena ground or an
+ * existing piece's bounding box); if nothing is close, falls back to a point
+ * straight ahead at the player's own feet height so building always works
+ * when looking roughly forward at open air.
+ */
+export function raycastPlacementPoint(eye, dir, feetY) {
+  let best = null, bestT = BUILD_REACH;
+
+  if (dir.y < -1e-6) {
+    const t = -eye.y / dir.y;
+    if (t > 0 && t < bestT) {
+      const x = eye.x + dir.x * t, z = eye.z + dir.z * t;
+      if (inBuildArena(x, z)) { bestT = t; best = { x, y: 0, z }; }
+    }
+  }
+  for (const piece of pieces.values()) {
+    const t = rayAABB(eye, dir, pieceAimBox(piece));
+    if (t !== null && t < bestT) {
+      bestT = t;
+      best = { x: eye.x + dir.x * t, y: eye.y + dir.y * t, z: eye.z + dir.z * t };
+    }
+  }
+
+  if (best && bestT <= FORWARD_DISTANCE + 1) return best;
+
+  return {
+    x: eye.x + dir.x * FORWARD_DISTANCE,
+    y: feetY,
+    z: eye.z + dir.z * FORWARD_DISTANCE,
+  };
+}
+
+const snapCentre = v => Math.round(v / GRID) * GRID;                        // cell centre
+const snapEdge   = v => Math.round((v - GRID / 2) / GRID) * GRID + GRID / 2; // nearest cell edge
+
+/**
+ * Compute the prospective piece for the current aim — WITHOUT registering it.
+ * Returns { type, gx, gy, gz, orient?/dir? } or null. The client renders this
+ * as the ghost preview; the server registers it on confirm (left-click).
+ */
+export function computePlacement(eye, dir, feetY, yaw, pieceType) {
+  const hit = raycastPlacementPoint(eye, dir, feetY);
+  if (!hit) return null;
+
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+  const gy = Math.max(0, Math.round(hit.y / GRID) * GRID);
+
+  if (pieceType === 'ramp') {
+    // Ramp fills the whole cell → snap to the cell centre.
+    return { type: 'ramp', gx: snapCentre(hit.x), gy, gz: snapCentre(hit.z), dir: rampDirFromAim(fx, fz) };
+  }
+
+  // Wall sits on a cell EDGE: the thin axis snaps to the nearest cell
+  // boundary, the spanning axis snaps to the cell centre.
+  const orient = orientFromAim(fx, fz);
+  return orient === 'x'
+    ? { type: 'wall', orient, gx: snapCentre(hit.x), gy, gz: snapEdge(hit.z) }
+    : { type: 'wall', orient, gx: snapEdge(hit.x),   gy, gz: snapCentre(hit.z) };
+}
+
+/** Full validity check for a prospective piece (arena bounds + cell free). */
+export function placementValid(piece) {
+  return !!piece && inBuildArena(piece.gx, piece.gz) && !isCellOccupied(piece.gx, piece.gy, piece.gz);
 }

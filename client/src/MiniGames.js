@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import {
   GRID, WALL_THICKNESS, MAX_PIECES_PER_PLAYER,
   registerPiece, clearPieces,
+  computePlacement, placementValid,
 } from '../../shared/build.js';
 
 const JOIN_RADIUS = 3.2;
@@ -41,6 +42,12 @@ export class MiniGames {
     this.buildPieceType = 'wall';    // currently selected piece type (client-only choice)
     this._rampGeo       = null;      // lazily-built shared wedge geometry
     this.buildInputOn    = true;     // manual toggle (B key) — build vs. shoot while in the mode
+
+    // Ghost preview: translucent meshes showing where the piece WOULD go.
+    // Built lazily on first use; blue = valid spot, red = blocked/out of zone.
+    this._ghostWall = null;
+    this._ghostRamp = null;
+    this._ghostPiece = null;         // last computed prospective piece (for debugging)
 
     this._cacheDom();
   }
@@ -179,6 +186,69 @@ export class MiniGames {
     }
 
     this._updateBuildPanel();
+    this._updateGhost(localPlayer);
+  }
+
+  // ── Ghost preview (translucent placement preview) ────────────────────────────
+
+  _ensureGhosts() {
+    if (this._ghostWall) return;
+    const mat = () => new THREE.MeshBasicMaterial({
+      color: 0x33aaff, transparent: true, opacity: 0.35,
+      depthWrite: false, side: THREE.DoubleSide,
+    });
+    // Wall ghost: unit-thin box, scaled per orientation each frame.
+    this._ghostWall = new THREE.Mesh(new THREE.BoxGeometry(1, GRID, 1), mat());
+    this._ghostWall.visible = false;
+    this.scene.add(this._ghostWall);
+    // Ramp ghost: same wedge geometry as the real ramp mesh.
+    this._ensureRampGeo();
+    this._ghostRamp = new THREE.Mesh(this._rampGeo, mat());
+    this._ghostRamp.visible = false;
+    this.scene.add(this._ghostRamp);
+  }
+
+  _updateGhost(localPlayer) {
+    if (!this.isBuildMode()) { this._hideGhosts(); return; }
+    this._ensureGhosts();
+
+    // Same inputs the confirm-click will send → same shared computation the
+    // server runs, so the preview is exactly where the piece will appear.
+    const eye = localPlayer.eyePosition();
+    const dir = {
+      x: -Math.sin(localPlayer.yaw) * Math.cos(localPlayer.pitch),
+      y:  Math.sin(localPlayer.pitch),
+      z: -Math.cos(localPlayer.yaw) * Math.cos(localPlayer.pitch),
+    };
+    const piece = computePlacement(eye, dir, localPlayer.y, localPlayer.yaw, this.buildPieceType);
+    this._ghostPiece = piece;
+    if (!piece) { this._hideGhosts(); return; }
+
+    // Valid → blue, blocked/out-of-zone or piece cap reached → red.
+    const mine    = this.state?.scores?.find(s => s.id === this.net.myId);
+    const capFull = (mine ? mine.score : 0) >= MAX_PIECES_PER_PLAYER;
+    const ok      = placementValid(piece) && !capFull;
+    const color   = ok ? 0x33aaff : 0xff4444;
+
+    if (piece.type === 'ramp') {
+      this._ghostWall.visible = false;
+      this._ghostRamp.visible = true;
+      this._ghostRamp.material.color.setHex(color);
+      this._ghostRamp.position.set(piece.gx, piece.gy, piece.gz);
+      this._ghostRamp.rotation.y = RAMP_ROT[piece.dir] ?? 0;
+    } else {
+      this._ghostRamp.visible = false;
+      this._ghostWall.visible = true;
+      this._ghostWall.material.color.setHex(color);
+      this._ghostWall.position.set(piece.gx, piece.gy + GRID / 2, piece.gz);
+      if (piece.orient === 'x') this._ghostWall.scale.set(GRID, 1, WALL_THICKNESS);
+      else                      this._ghostWall.scale.set(WALL_THICKNESS, 1, GRID);
+    }
+  }
+
+  _hideGhosts() {
+    if (this._ghostWall) this._ghostWall.visible = false;
+    if (this._ghostRamp) this._ghostRamp.visible = false;
   }
 
   // E pressed near a sign → join that mode
@@ -190,6 +260,7 @@ export class MiniGames {
     this.net.mgLeave();
     this._clearTargets();
     this._clearBuildPieces();
+    this._hideGhosts();
     this.buildInputOn = true; // reset for next time
     this._renderOverlay(null);
   }
@@ -252,19 +323,22 @@ export class MiniGames {
     this.buildMeshes.clear();
   }
 
+  _ensureRampGeo() {
+    if (this._rampGeo) return;
+    // A right-triangle profile (rises from height 0 at local X=-GRID/2 to
+    // GRID at X=+GRID/2), extruded GRID deep along Z — a smooth wedge. The
+    // player actually walks it via an analytic slope (shared/build.js
+    // applyRampWalk), so this visual matches the real walkable surface.
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0); shape.lineTo(GRID, 0); shape.lineTo(GRID, GRID); shape.closePath();
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: GRID, bevelEnabled: false });
+    geo.translate(-GRID / 2, 0, -GRID / 2);
+    this._rampGeo = geo;
+  }
+
   _makePieceMesh(p) {
     if (p.type === 'ramp') {
-      if (!this._rampGeo) {
-        // A right-triangle profile (rises from height 0 at local X=-GRID/2 to
-        // GRID at X=+GRID/2), extruded GRID deep along Z — a smooth wedge. The
-        // player actually walks it via an analytic slope (shared/build.js
-        // applyRampWalk), so this visual matches the real walkable surface.
-        const shape = new THREE.Shape();
-        shape.moveTo(0, 0); shape.lineTo(GRID, 0); shape.lineTo(GRID, GRID); shape.closePath();
-        const geo = new THREE.ExtrudeGeometry(shape, { depth: GRID, bevelEnabled: false });
-        geo.translate(-GRID / 2, 0, -GRID / 2);
-        this._rampGeo = geo;
-      }
+      this._ensureRampGeo();
       const mat = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.7 });
       const mesh = new THREE.Mesh(this._rampGeo, mat);
       mesh.position.set(p.gx, p.gy, p.gz);

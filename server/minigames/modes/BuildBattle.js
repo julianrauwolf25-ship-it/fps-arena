@@ -1,21 +1,19 @@
 // BuildBattle.js — Fortnite-style building practice: place walls and ramps
-// (20 pieces each), which connect edge-to-edge and stack on top of one
-// another. All placed geometry is removed automatically when the round ends
-// (see onReset), regardless of how it ends (time-up, abort, or admin stop —
-// all funnel through the shared MiniGame lifecycle).
+// (20 pieces each) on a strict grid — ramps FILL a cell, walls sit on cell
+// EDGES — and everything is removed automatically when the round ends.
 //
-// Placement is server-authoritative: the client only sends { pieceType, yaw,
-// pitch }; this mode computes the aim ray from the player's own server-side
-// eye position/rotation (exactly like Room.js's hitscan _shoot), then raycasts
-// against the build-arena floor and existing pieces to find where to snap the
-// new piece on the shared GRID (see shared/build.js).
+// Placement is server-authoritative but computed by the SAME shared function
+// (shared/build.js computePlacement) that drives the client's translucent
+// ghost preview, so what the player sees is exactly what the server places.
+// The client only sends { pieceType, yaw, pitch }; eye position and feet
+// height come from the server's own player state (like Room.js's hitscan).
 
 import { MiniGame } from '../MiniGame.js';
 import {
-  BUILD_SPAWNS, BUILD_REACH, FORWARD_DISTANCE, MAX_PIECES_PER_PLAYER,
+  BUILD_SPAWNS, BUILD_REACH, MAX_PIECES_PER_PLAYER,
   pieces, registerPiece, removePieceById, clearPieces, getPiecesArray,
-  isCellOccupied, snapToGrid, inBuildArena, orientFromAim, rampDirFromAim,
-  pieceAimBox,
+  computePlacement, placementValid, inBuildArena,
+  pieceAimBox, rayAABB,
 } from '../../../shared/build.js';
 
 export class BuildBattle extends MiniGame {
@@ -83,22 +81,17 @@ export class BuildBattle extends MiniGame {
       return;
     }
 
-    const hit = this._raycastPlacement(eye, dir, feetY);
-    if (!hit) return;
-
-    const { gx, gy, gz } = snapToGrid(hit.x, hit.y, hit.z);
-    if (!inBuildArena(gx, gz)) {
+    // Same computation the client used for its ghost preview.
+    const piece = computePlacement(eye, dir, feetY, yaw, pieceType);
+    if (!piece) return;
+    if (!inBuildArena(piece.gx, piece.gz)) {
       this.send(id, { type: 'mg_notice', text: 'Außerhalb der Bauzone!' });
       return;
     }
-    if (isCellOccupied(gx, gy, gz)) return; // cell already taken — ignore silently
+    if (!placementValid(piece)) return;   // cell/edge already occupied — ignore
 
-    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
-    const piece = { id: `${id}_${this._nextPieceId++}`, ownerId: id, gx, gy, gz, type: pieceType };
-
-    if (pieceType === 'ramp') piece.dir = rampDirFromAim(fx, fz);
-    else                      piece.orient = orientFromAim(fx, fz);
-
+    piece.id      = `${id}_${this._nextPieceId++}`;
+    piece.ownerId = id;
     registerPiece(piece);
     this.countByOwner.set(id, count + 1);
     this.scoreboard.set(id, count + 1);
@@ -118,46 +111,6 @@ export class BuildBattle extends MiniGame {
     this._broadcastPieces();
   }
 
-  // ── Raycasting (server-authoritative) ───────────────────────────────────────
-
-  /**
-   * Find where to place a piece. Prefers a precise hit (ground plane or an
-   * existing piece's bounding box) so you can snap onto specific tops/edges
-   * when looking down at them. If nothing is hit within FORWARD_DISTANCE —
-   * which is the common case, since building normally means looking roughly
-   * forward at open air, not straight down — fall back to a point straight
-   * ahead of the player at their own feet height, so building always works
-   * regardless of where the camera is pitched.
-   */
-  _raycastPlacement(eye, dir, feetY) {
-    let best = null, bestT = BUILD_REACH;
-
-    if (dir.y < -1e-6) {
-      const t = -eye.y / dir.y;
-      if (t > 0 && t < bestT) {
-        const x = eye.x + dir.x * t, z = eye.z + dir.z * t;
-        if (inBuildArena(x, z)) { bestT = t; best = { x, y: 0, z }; }
-      }
-    }
-    for (const piece of pieces.values()) {
-      const t = rayAABB(eye, dir, pieceAimBox(piece));
-      if (t !== null && t < bestT) {
-        bestT = t;
-        best = { x: eye.x + dir.x * t, y: eye.y + dir.y * t, z: eye.z + dir.z * t };
-      }
-    }
-
-    if (best && bestT <= FORWARD_DISTANCE + 1) return best;
-
-    // Fallback: straight ahead at a fixed distance, at the player's own feet
-    // height — this is what makes "look forward and build" work reliably.
-    return {
-      x: eye.x + dir.x * FORWARD_DISTANCE,
-      y: feetY,
-      z: eye.z + dir.z * FORWARD_DISTANCE,
-    };
-  }
-
   _raycastPieceHit(eye, dir) {
     let bestId = null, bestT = BUILD_REACH;
     for (const piece of pieces.values()) {
@@ -170,26 +123,4 @@ export class BuildBattle extends MiniGame {
   _broadcastPieces() {
     this.broadcast({ type: 'mg_build_state', pieces: getPiecesArray() });
   }
-}
-
-// Ray–AABB slab test (same technique as Room.js's hitscan raycast).
-function rayAABB(origin, dir, box) {
-  const hw = box.w / 2, hh = box.h / 2, hd = box.d / 2;
-  const minX = box.x - hw, maxX = box.x + hw;
-  const minY = box.y - hh, maxY = box.y + hh;
-  const minZ = box.z - hd, maxZ = box.z + hd;
-  const eps = 1e-9;
-  const ix = Math.abs(dir.x) > eps ? 1 / dir.x : (dir.x >= 0 ? Infinity : -Infinity);
-  const iy = Math.abs(dir.y) > eps ? 1 / dir.y : (dir.y >= 0 ? Infinity : -Infinity);
-  const iz = Math.abs(dir.z) > eps ? 1 / dir.z : (dir.z >= 0 ? Infinity : -Infinity);
-
-  const tx1 = (minX - origin.x) * ix, tx2 = (maxX - origin.x) * ix;
-  const ty1 = (minY - origin.y) * iy, ty2 = (maxY - origin.y) * iy;
-  const tz1 = (minZ - origin.z) * iz, tz2 = (maxZ - origin.z) * iz;
-
-  const tmin = Math.max(Math.min(tx1, tx2), Math.min(ty1, ty2), Math.min(tz1, tz2));
-  const tmax = Math.min(Math.max(tx1, tx2), Math.max(ty1, ty2), Math.max(tz1, tz2));
-
-  if (tmax < 0 || tmin > tmax) return null;
-  return tmin >= 0 ? tmin : tmax;
 }
